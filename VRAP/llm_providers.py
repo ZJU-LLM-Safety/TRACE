@@ -33,15 +33,18 @@ class OpenAIProvider(LLMProvider):
     
     def __init__(self, model_name: str):
         super().__init__(model_name)
-        # api_key = os.getenv('OPENAI_API_KEY')
-        # if not api_key:
-        #     raise ValueError("OPENAI_API_KEY not found in environment variables")
-        
-        self.client = OpenAI(api_key="sk-Y9sEZDrPHBFdgA9o2qV0wXkPUejydYJfE2mSl5y7jaArQ1XH", base_url="https://az.gptplus5.com/v1")
-        if "deepseek" in model_name.lower(): # and "pro" in model_name.lower():
-            self.client = OpenAI(api_key="sk-c38f2bcafba54ffdad2518d4626f27f5", base_url="https://api.deepseek.com")
-        elif "gpt-5.3-chat" in model_name:
-            self.client = OpenAI(api_key="sk-8bwuLBrYstPW7SDz30284771Ef274c7aB525Db7917640cBe", base_url="https://api.gpt.ge/v1")
+        if "deepseek" in model_name.lower():
+            api_key = os.getenv("DEEPSEEK_API_KEY")
+            if not api_key:
+                raise ValueError("DEEPSEEK_API_KEY not found in environment variables")
+            base_url = os.getenv("DEEPSEEK_BASE_URL", os.getenv("DEEPSEEK_API_BASE_URL", "https://api.deepseek.com"))
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY not found in environment variables")
+            base_url = os.getenv("OPENAI_BASE_URL", os.getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1"))
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
     
     def chat_completion(self, messages: List[Dict[str, str]], **kwargs) -> Tuple[str, Dict[str, int]]:
         """Generate chat completion using OpenAI"""

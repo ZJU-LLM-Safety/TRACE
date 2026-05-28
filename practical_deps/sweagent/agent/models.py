@@ -323,11 +323,8 @@ class OpenAIModel(BaseModel):
                 api_version=keys_config.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
             )
         else:
-            api_base_url: str = "https://api.shubiaobiao.cn/v1"
-            # self.client = OpenAI(api_key="sk-YR20dzgwBLD8Chgr2782E534Ec8944779f56C7Cf316c250a", base_url=api_base_url)
-            self.client = OpenAI(api_key="sk-Y9sEZDrPHBFdgA9o2qV0wXkPUejydYJfE2mSl5y7jaArQ1XH", base_url="https://az.gptplus5.com/v1") # "https://az.gptplus5.com/v1" "http://azpro.xunxkj.cn/v1"
-            # api_base_url: str | None = keys_config.get("OPENAI_API_BASE_URL", None)
-            # self.client = OpenAI(api_key=keys_config["OPENAI_API_KEY"], base_url=api_base_url)
+            api_base_url: str | None = keys_config.get("OPENAI_BASE_URL", keys_config.get("OPENAI_API_BASE_URL", None))
+            self.client = OpenAI(api_key=keys_config["OPENAI_API_KEY"], base_url=api_base_url)
 
     def history_to_messages(
         self,
@@ -387,7 +384,7 @@ class DeepSeekModel(OpenAIModel):
     SHORTCUTS = {}
 
     def _setup_client(self) -> None:
-        api_base_url: str = keys_config["DEEPSEEK_API_BASE_URL"]
+        api_base_url: str = keys_config.get("DEEPSEEK_BASE_URL", keys_config["DEEPSEEK_API_BASE_URL"])
         self.client = OpenAI(api_key=keys_config["DEEPSEEK_API_KEY"], base_url=api_base_url)
 
 
