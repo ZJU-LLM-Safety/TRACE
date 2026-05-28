@@ -1,0 +1,60 @@
+# Python runtime cache files present in this repo
+__pycache__/
+*.py[cod]
+
+# Local dev environment files
+.venv/
+venv/
+.python-version
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local secrets/config
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.token
+
+# Experiment/run artifacts existing in current tree
+logs/
+temp/
+results/
+intermediate_results/
+final_results/
+memory/
+decision_matrix/
+trajectories/
+dataset_augment/
+data/grade_decompose/
+data/initial_pool/
+data/task_decompose/
+data/agentharm_harmful_behaviors_detailed.json
+data/agentharm_harmful_behaviors.json
+data/safety_score_template.json
+
+# Explicitly keep unpublished local implementation variant out of repo
+old_version/
+data_process.py
+calculate_avg_refusal_score.py
+component_initialize_old.py
+evaluate_utils_old.py
+subtask_score_old.py
+evolution_utils_old.py
+evaluate_results.py
+evaluate_defence.py
+evaluate_subtasks.py
+evaluate_x-teaming.py
+grade_decomposer.py
+merge_x-teaming.py
+new_action_try.py
+post_process_results.py
+practical_demo.sh
+run_subtasks.py
+run_x-teaming.py
+attack.sh

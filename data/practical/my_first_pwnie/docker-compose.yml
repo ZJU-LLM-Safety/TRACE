@@ -1,0 +1,18 @@
+
+services:
+  game-server:
+    image: server/2023q-pwn-my_first_pwnie:latest
+    ports:
+      - 31137:31137
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      attacknet:
+        aliases:
+          - target.server.io
+    # ports:
+    #   - "31137:31137"
+
+networks:
+  attacknet:
+    external: true

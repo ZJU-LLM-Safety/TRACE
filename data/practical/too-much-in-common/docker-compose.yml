@@ -1,0 +1,16 @@
+
+services:
+  too-much-in-common-server:
+    image: server/2022q-cry-too_much_in_common
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      attacknet:
+        aliases:
+          - target.server.io
+    ports:
+      - 5000:5000
+
+networks:
+  attacknet:
+    external: true
