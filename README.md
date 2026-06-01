@@ -1,6 +1,6 @@
 # TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking
 
-Official implementation for **TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking**.
+Official implementation for **[TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking](https://arxiv.org/abs/2605.30883)**.
 
 TRACE is a research framework for studying agentic jailbreak risks in controlled evaluation environments. It evaluates whether LLM-based agents can preserve adversarial objectives across multi-step, tool-mediated execution, rather than merely producing isolated unsafe responses. The implementation covers the main TRACE workflow, including task decomposition, task-aware subtask induction, feedback-driven scenario evolution, memory reuse, and benchmark-level trajectory evaluation.
 
@@ -195,9 +195,13 @@ The script replays saved trajectories and reports benchmark-level **Average Succ
 If you find this repository useful, please cite our paper:
 
 ```bibtex
-@misc{trace2026,
-  title  = {TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking},
-  author = {Anonymous},
-  year   = {2026}
+@misc{zeng2026tracetaskawareadaptiveselfevolving,
+      title={TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking}, 
+      author={Churui Zeng and Weiwei Qi and Kedong Xiu and Tianhang Zheng and Chaochao Lu and Liang He and Zhan Qin and Kui Ren},
+      year={2026},
+      eprint={2605.30883},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2605.30883}, 
 }
 ```
