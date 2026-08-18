@@ -1,0 +1,42 @@
+mode: "Transform"
+
+server:
+  addr: "0.0.0.0:38446"
+
+log:
+  level: "info"
+  format: "text"
+
+trace:
+  enabled: false
+
+defaults:
+  model: "gemini-3-flash-preview"
+  max_tokens: 4096
+
+web_search:
+  support: "disabled"
+
+cache:
+  mode: "off"
+
+models:
+  gemini-3-flash-preview:
+    web_search:
+      support: "disabled"
+
+providers:
+  gemini_openai_chat:
+    protocol: "openai-chat"
+    base_url: "https://az.gptplus5.com/v1"
+    api_key: "replace-with-upstream-api-key"
+    user_agent: "moonbridge/1.0"
+    web_search:
+      support: "disabled"
+    offers:
+      - model: gemini-3-flash-preview
+
+routes:
+  gemini-3-flash-preview:
+    model: gemini-3-flash-preview
+    provider: gemini_openai_chat
