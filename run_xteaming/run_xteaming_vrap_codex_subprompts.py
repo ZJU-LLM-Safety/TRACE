@@ -105,6 +105,7 @@ def main() -> int:
         "target_model": args.claude_model if args.target_backend == "claude" else args.codex_model,
         "codex_model": args.codex_model,
         "claude_model": args.claude_model,
+        "claude_runner": getattr(args, "claude_runner", None),
         "target_execution_mode": args.target_execution_mode,
         "post_subtask_execution_turn": args.post_subtask_execution_turn,
         "post_subtask_execution_prompt": args.post_subtask_execution_prompt,

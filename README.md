@@ -233,6 +233,7 @@ Notes:
 - GPTJudge and TextGrad follow `config/config.yaml` unless overridden by flags. If the configured judge model is unavailable, set `evaluation.judge_model` in the copied config, for example to `gpt-4o-2024-11-20`.
 - For Codex targets instead of Claude, use `--target-backend codex`, `--codex-model <model>`, `--responses-base-url <endpoint>/v1`, and `--responses-env-key OPENAI_API_KEY`.
 - For Claude target x-teaming, keep the x-teaming/GPTJudge/TextGrad OpenAI-compatible endpoint as the normal host-side URL, for example `https://az.gptplus5.com/v1`. Do not use the Docker bridge Codex/MoonBridge URL `http://192.168.2.1:38440/v1` for this stage unless you have explicitly started that service. Claude Code itself still uses the Anthropic proxy URL passed by `--anthropic-base-url`.
+- Claude targets default to `--claude-runner sdk`, which uses `claude-agent-sdk` and `ClaudeSDKClient`. To test Claude Code print-mode CLI directly, pass `--claude-runner cli`; this runs `claude -p ... --output-format stream-json --verbose` inside the VRAP client container and extracts tool actions from the stream.
 
 ### Known Good Claude id15 End-to-End Run
 
@@ -283,6 +284,7 @@ conda run --no-capture-output -n x-teaming python run_xteaming_vrap_codex_subpro
   --link-mode session \
   --target-backend claude \
   --claude-model claude-opus-4-6 \
+  --claude-runner sdk \
   --anthropic-base-url http://192.168.2.1:38445 \
   --anthropic-env-key ANTHROPIC_API_KEY \
   --claude-home /home/agent/claude_home \
@@ -321,6 +323,7 @@ conda run --no-capture-output -n x-teaming python agent_execution/scripts/codex_
   --output-mode all \
   --prompt-style rule \
   --claude-model claude-opus-4-6 \
+  --claude-runner sdk \
   --anthropic-base-url http://192.168.2.1:38445 \
   --anthropic-env-key ANTHROPIC_API_KEY \
   --claude-home /home/agent/claude_home \
@@ -330,6 +333,12 @@ conda run --no-capture-output -n x-teaming python agent_execution/scripts/codex_
   --agent-user user \
   --bypass \
   --output-dir run_xteaming/xteaming_vrap_codex_outputs/migration_id15_claude_execution_20260818_153249/item_15
+```
+
+To run the same Claude target path through Claude Code CLI instead of the SDK runner, keep the command the same and change:
+
+```bash
+--claude-runner cli
 ```
 
 Replay verification is optional and checks whether the saved `actions` can reproduce the live run in a fresh environment:

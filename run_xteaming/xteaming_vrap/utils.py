@@ -92,6 +92,7 @@ def write_run_metadata(
             "anthropic_base_url": getattr(args, "anthropic_base_url", None),
             "anthropic_env_key": getattr(args, "anthropic_env_key", None),
             "claude_home": getattr(args, "claude_home", None),
+            "claude_runner": getattr(args, "claude_runner", None),
             "codex_write_config": args.codex_write_config,
             "claude_max_turns": getattr(args, "claude_max_turns", None),
             "allowed_tools": getattr(args, "allowed_tools", None),

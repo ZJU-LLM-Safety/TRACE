@@ -76,6 +76,7 @@ class XTeamingSubtaskRunner(MultiSubtaskRunner):
             "codex_model": self.args.codex_model,
             "claude_model": getattr(self.args, "claude_model", None),
             "claude_home": getattr(self.args, "claude_home", None),
+            "claude_runner": getattr(self.args, "claude_runner", None),
             "container": CLIENT_CONTAINER,
             "link_mode": self.args.link_mode,
             "subprompt_count": len(self.subprompts),

@@ -106,6 +106,7 @@ def run_turn(
         claude_home=args.claude_home,
         resume_session_id=resume_id if should_resume else None,
         fork_session=args.fork_session and should_resume,
+        claude_runner=args.claude_runner,
     )
 
 
@@ -219,6 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-user", help="Override runtime user for Codex/Claude inside my_ssh_client.")
     parser.add_argument("--allowed-tools", help="Comma-separated Claude Code tools/rules to auto-approve, e.g. Bash,Write,Read.")
     parser.add_argument("--claude-home", default=DEFAULT_CLAUDE_HOME)
+    parser.add_argument("--claude-runner", choices=("sdk", "cli"), default="sdk")
     parser.add_argument("--bypass", action="store_true")
     parser.add_argument("--codex-write-config", action="store_true")
     parser.add_argument("--responses-base-url")

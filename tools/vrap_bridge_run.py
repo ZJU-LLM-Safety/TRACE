@@ -68,6 +68,7 @@ def run_item_only(item: dict[str, Any], args: argparse.Namespace) -> dict[str, A
                 anthropic_env_key=args.anthropic_env_key,
                 allowed_tools=parse_csv_arg(args.allowed_tools),
                 claude_home=args.claude_home,
+                claude_runner=args.claude_runner,
             )
 
         return build_trajectory(
@@ -99,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-user", help="Override runtime user for Codex/Claude inside my_ssh_client.")
     parser.add_argument("--allowed-tools", help="Comma-separated Claude Code tools/rules to auto-approve, e.g. Bash,Write,Read.")
     parser.add_argument("--claude-home", default=DEFAULT_CLAUDE_HOME)
+    parser.add_argument("--claude-runner", choices=("sdk", "cli"), default="sdk")
     parser.add_argument("--bypass", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--codex-write-config", action="store_true")

@@ -102,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--claude-home", default=DEFAULT_CONTAINER_CLAUDE_HOME)
     parser.add_argument("--claude-max-turns", type=int, default=30)
     parser.add_argument(
+        "--claude-runner",
+        choices=("sdk", "cli"),
+        default="sdk",
+        help="Claude target runner: sdk uses claude-agent-sdk; cli uses Claude Code print-mode CLI.",
+    )
+    parser.add_argument(
         "--allowed-tools",
         default="Bash,Read,Write",
         help="Comma-separated Claude Code tools/rules to auto-approve.",

@@ -513,6 +513,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--anthropic-env-key", default="ANTHROPIC_API_KEY")
     parser.add_argument("--claude-home", default=DEFAULT_CONTAINER_CLAUDE_HOME)
     parser.add_argument("--claude-max-turns", type=int, default=30)
+    parser.add_argument(
+        "--claude-runner",
+        choices=("sdk", "cli"),
+        default="sdk",
+        help="Claude runner: sdk uses claude-agent-sdk; cli uses Claude Code print-mode CLI.",
+    )
     parser.add_argument("--allowed-tools", default="Bash,Read,Write")
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--compose-file", type=Path, default=DEFAULT_COMPOSE)
@@ -561,6 +567,7 @@ def main() -> int:
         "item": item,
         "backend": args.backend,
         "model": args.claude_model if args.backend == "claude" else args.model,
+        "claude_runner": args.claude_runner if args.backend == "claude" else None,
         "prompt_builder_model": args.prompt_builder_model if args.prompt_style == "auto" else None,
         "prompt_builder_include_item_prompt": (
             args.prompt_builder_include_item_prompt if args.prompt_style == "auto" else None
@@ -636,6 +643,7 @@ def main() -> int:
                     allowed_tools=parse_csv_arg(args.allowed_tools),
                     claude_home=args.claude_home,
                     resume_session_id=session_id,
+                    claude_runner=args.claude_runner,
                 )
             else:
                 result = run_codex_in_vrap(
