@@ -11,6 +11,11 @@ from typing import Any
 from agents.gpt_evaluator import GPTJudge
 from agents.target_model import truncate_response
 
+from agent_execution.strategy_execution import (
+    apply_strategy_execution_result,
+    execute_strategy_output_and_verify,
+)
+
 from .models import TGTransformersQwenAttacker, TransformersQwenAttacker
 from .targets import (
     IsolatedTextGradTrialTarget,
@@ -418,6 +423,26 @@ def run_single_xteaming_strategy_isolated_textgrad(
         },
         "verification": verification,
     }
+    if (
+        getattr(args, "strategy_success_mode", "judge") == "execute_verify"
+        and not strategy_result.get("error")
+    ):
+        print("    executing strategy output for live verification", flush=True)
+        execution = execute_strategy_output_and_verify(
+            item=item,
+            subtask_index=getattr(args, "current_subtask_index", -1),
+            subtask=subtask,
+            strategy_run=strategy_run,
+            args=args,
+        )
+        apply_strategy_execution_result(strategy_run, execution)
+        print(
+            "    strategy execution "
+            f"status={execution.get('status')} "
+            f"actions={len(execution.get('actions') or [])} "
+            f"verification_ok={execution.get('verification_ok')}",
+            flush=True,
+        )
     if snapshot_tmp is not None:
         snapshot_tmp.cleanup()
     return strategy_result, strategy_run
@@ -562,11 +587,6 @@ def run_single_xteaming_strategy(
             elif args.textgrad:
                 turns_per_phase += 1
 
-        verification = verify_item_compat(item, target, args) if args.verify else {
-            "status": "pending",
-            "ok": None,
-            "checks": [],
-        }
         strategy_run = {
             "strategy": strategy,
             "strategy_meta": strategy_meta,
@@ -596,6 +616,36 @@ def run_single_xteaming_strategy(
                     target.target_execution_prompt_applied
                 ),
             },
-            "verification": verification,
+            "verification": {
+                "status": "pending",
+                "ok": None,
+                "checks": [],
+            },
         }
-        return strategy_result, strategy_run
+        if getattr(args, "strategy_success_mode", "judge") != "execute_verify":
+            strategy_run["verification"] = verify_item_compat(item, target, args) if args.verify else {
+                "status": "pending",
+                "ok": None,
+                "checks": [],
+            }
+    if (
+        getattr(args, "strategy_success_mode", "judge") == "execute_verify"
+        and not strategy_result.get("error")
+    ):
+        print("    executing strategy output for live verification", flush=True)
+        execution = execute_strategy_output_and_verify(
+            item=item,
+            subtask_index=getattr(args, "current_subtask_index", -1),
+            subtask=subtask,
+            strategy_run=strategy_run,
+            args=args,
+        )
+        apply_strategy_execution_result(strategy_run, execution)
+        print(
+            "    strategy execution "
+            f"status={execution.get('status')} "
+            f"actions={len(execution.get('actions') or [])} "
+            f"verification_ok={execution.get('verification_ok')}",
+            flush=True,
+        )
+    return strategy_result, strategy_run

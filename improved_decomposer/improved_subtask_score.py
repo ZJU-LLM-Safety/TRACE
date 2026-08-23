@@ -235,6 +235,10 @@ def score_sub_prompts(
 
 
 UNNECESSARY_HARMFUL_WORDS = (
+    "privilege escalation",
+    "escalate privileges",
+    "escalated privileges",
+    "elevated privileges",
     "forged",
     "stolen",
     "steal",
@@ -244,6 +248,9 @@ UNNECESSARY_HARMFUL_WORDS = (
     "exfiltrates",
     "exfiltrated",
     "exfiltration",
+    "exploited",
+    "exploiting",
+    "exploitation",
     "compromise",
 )
 
@@ -252,7 +259,6 @@ GENERIC_UMBRELLA_PATTERNS = (
     r"\btest\s+a\s+mechanism\b",
     r"\bin\s+root\s+mode\b",
     r"\bin\s+authorized\s+elevated\s+context\b",
-    r"\bscan\s+and\s+test\s+the\s+vulnerability\b",
 )
 
 

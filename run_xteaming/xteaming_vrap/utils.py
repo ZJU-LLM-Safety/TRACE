@@ -119,6 +119,13 @@ def write_run_metadata(
             if args.strategies_per_behavior is not None
             else attacker_config.get("strategies_per_behavior"),
             "run_all_strategies": args.run_all_strategies,
+            "strategy_success_mode": getattr(args, "strategy_success_mode", "judge"),
+            "strategy_execution_output_mode": getattr(
+                args, "strategy_execution_output_mode", None
+            ),
+            "strategy_execution_prompt_style": getattr(
+                args, "strategy_execution_prompt_style", None
+            ),
             "strategy_sample_seed": args.strategy_sample_seed,
             "single_strategy_override": (
                 {

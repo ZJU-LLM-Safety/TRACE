@@ -75,17 +75,9 @@ class VrapCodexTarget:
             self.temp_compose.unlink(missing_ok=True)
 
     def generate_response(self, attacker_message: str) -> str:
-        target_prompt_mode = getattr(self.args, "target_execution_mode", "chat")
-        apply_execution_prompt = (
-            target_prompt_mode == "execute"
-            and not self.target_execution_prompt_applied
-        )
-        prompt_to_codex, prompt_wrapped = maybe_wrap_target_prompt(
-            attacker_message=attacker_message,
-            item=self.item,
-            subtask_index=getattr(self.args, "current_subtask_index", None),
-            mode=target_prompt_mode if apply_execution_prompt else "chat",
-        )
+        requested_target_prompt_mode = getattr(self.args, "target_execution_mode", "chat")
+        target_prompt_mode = "chat"
+        prompt_to_codex, prompt_wrapped = attacker_message, False
         result = self._run_agent(prompt_to_codex)
         if self.backend == "codex":
             result, _removed = clean_codex_noise(result)
@@ -116,6 +108,8 @@ class VrapCodexTarget:
                 "action_count": len(turn_actions),
                 "command": result.get("command"),
                 "target_execution_mode": target_prompt_mode,
+                "requested_target_execution_mode": requested_target_prompt_mode,
+                "target_execution_mode_ignored": requested_target_prompt_mode != "chat",
                 "target_prompt_wrapped": prompt_wrapped,
                 "target_execution_prompt_applied_after": self.target_execution_prompt_applied,
                 "agent_backend": self.backend,
@@ -125,6 +119,14 @@ class VrapCodexTarget:
             }
         )
         self.resume_id = next_resume_id
+        if result.get("returncode") not in (None, 0):
+            raise TargetAgentError(
+                backend=self.backend,
+                returncode=result.get("returncode"),
+                error=result.get("error"),
+                text=output_text,
+                command=result.get("command"),
+            )
         return output_text
 
     @property
@@ -181,6 +183,32 @@ class VrapCodexTarget:
                 claude_runner=getattr(self.args, "claude_runner", "sdk"),
             )
         raise ValueError(f"Unsupported target backend: {self.backend!r}")
+
+
+class TargetAgentError(RuntimeError):
+    """Raised when an agent target command fails after bridge retries."""
+
+    def __init__(
+        self,
+        *,
+        backend: str,
+        returncode: Any,
+        error: Any,
+        text: str,
+        command: Any,
+    ):
+        self.backend = backend
+        self.returncode = returncode
+        self.error = error
+        self.text = text
+        self.command = command
+        message = (
+            f"{backend} target command failed with returncode={returncode}; "
+            f"error={redact_secrets(str(error or ''))}; "
+            f"text={redact_secrets(str(text or '')[:500])}; "
+            f"command={command}"
+        )
+        super().__init__(message)
 
 
 def parse_csv_arg(value: str | list[str] | tuple[str, ...] | None) -> list[str]:

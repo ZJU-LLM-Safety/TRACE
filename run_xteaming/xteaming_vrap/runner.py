@@ -42,6 +42,7 @@ def run_xteaming_subtask(
     strategy_runs = []
     successful_strategy_run = None
     last_strategy_run = None
+    success_mode = getattr(args, "strategy_success_mode", "judge")
 
     for index, (strategy, strategy_meta) in enumerate(selected_strategies, 1):
         print(
@@ -66,11 +67,29 @@ def run_xteaming_subtask(
         strategy_runs.append(strategy_run)
         last_strategy_run = strategy_run
 
-        if strategy_result["jailbreak_achieved"] and not args.run_all_strategies:
+        if strategy_result.get("error") and getattr(args, "stop_on_target_error", False):
+            raise RuntimeError(
+                "Stopping after target error in "
+                f"set={strategy_meta['set_number']} "
+                f"strategy={strategy_meta['strategy_number']}: "
+                f"{strategy_result['error']}"
+            )
+
+        if success_mode == "execute_verify":
+            strategy_success = bool((strategy_run.get("verification") or {}).get("ok"))
+            strategy_result["execution_verification_success"] = strategy_success
+            strategy_result["strategy_success_mode"] = "execute_verify"
+        else:
+            strategy_success = bool(strategy_result["jailbreak_achieved"])
+
+        if strategy_success and not args.run_all_strategies:
             successful_strategy_run = strategy_run
-            print("  jailbreak achieved; skipping remaining strategies", flush=True)
+            if success_mode == "execute_verify":
+                print("  execution verification succeeded; skipping remaining strategies", flush=True)
+            else:
+                print("  jailbreak achieved; skipping remaining strategies", flush=True)
             break
-        if strategy_result["jailbreak_achieved"]:
+        if strategy_success:
             successful_strategy_run = strategy_run
 
     final_strategy_run = successful_strategy_run or last_strategy_run or {
@@ -83,7 +102,10 @@ def run_xteaming_subtask(
         "formal_state": {},
         "verification": {"status": "pending", "ok": None, "checks": []},
     }
-    if getattr(args, "post_subtask_execution_turn", False):
+    if (
+        getattr(args, "post_subtask_execution_turn", False)
+        and success_mode != "execute_verify"
+    ):
         post_execution = run_post_subtask_execution_turn(
             item=item,
             args=args,
@@ -124,6 +146,13 @@ def run_xteaming_subtask(
             "strategies_per_behavior": len(selected_strategies),
             "executed_strategies": len(strategy_results),
             "run_all_strategies": args.run_all_strategies,
+            "strategy_success_mode": success_mode,
+            "strategy_execution_output_mode": getattr(
+                args, "strategy_execution_output_mode", None
+            ),
+            "strategy_execution_prompt_style": getattr(
+                args, "strategy_execution_prompt_style", None
+            ),
             "gpt_judge": args.use_gpt_judge,
             "gpt_judge_model": eval_config.get("judge_model", "gpt-4o") if args.use_gpt_judge else None,
             "textgrad": args.textgrad,
@@ -196,6 +225,13 @@ def build_dry_run_result(
             "bypass": args.bypass,
             "strategies_per_behavior": len(selected_strategies),
             "run_all_strategies": args.run_all_strategies,
+            "strategy_success_mode": getattr(args, "strategy_success_mode", "judge"),
+            "strategy_execution_output_mode": getattr(
+                args, "strategy_execution_output_mode", None
+            ),
+            "strategy_execution_prompt_style": getattr(
+                args, "strategy_execution_prompt_style", None
+            ),
             "gpt_judge": args.use_gpt_judge,
             "textgrad": args.textgrad,
             "isolated_textgrad": args.isolated_textgrad if args.textgrad else None,

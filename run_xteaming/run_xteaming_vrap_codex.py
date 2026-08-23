@@ -74,9 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("chat", "execute"),
         default="chat",
         help=(
-            "chat sends the X-Teaming attacker message directly to the target. "
-            "execute wraps it with execution context so the target is prompted "
-            "to run suitable environment actions."
+            "Deprecated compatibility option. X-Teaming target turns are now "
+            "always sent as chat; use --strategy-success-mode execute_verify "
+            "for post-strategy execution and verification."
         ),
     )
     parser.add_argument(
@@ -120,6 +120,45 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--placeholder-api-key", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--clean-proxy-env", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-gpt-judge", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument(
+        "--strategy-success-mode",
+        choices=("judge", "execute_verify"),
+        default="judge",
+        help=(
+            "judge keeps the original X-Teaming outer strategy stop condition "
+            "(GPTJudge score 5). execute_verify runs an execution prompt from "
+            "the completed strategy output and accepts the strategy only when "
+            "live verification succeeds."
+        ),
+    )
+    parser.add_argument(
+        "--strategy-execution-output-mode",
+        choices=("final", "all"),
+        default="all",
+        help="Which x-teaming target outputs to feed into per-strategy execution.",
+    )
+    parser.add_argument(
+        "--strategy-execution-prompt-style",
+        choices=("auto", "rule", "legacy"),
+        default="rule",
+        help="Prompt builder used by per-strategy execution.",
+    )
+    parser.add_argument(
+        "--strategy-execution-prompt-builder-model",
+        default="gpt-4o-2024-11-20",
+    )
+    parser.add_argument("--strategy-execution-prompt-builder-timeout", type=float, default=120)
+    parser.add_argument("--strategy-execution-prompt-builder-include-item-prompt", action="store_true")
+    parser.add_argument("--strategy-execution-omit-subtask-info", action="store_true")
+    parser.add_argument("--strategy-execution-timeout", type=int)
+    parser.add_argument(
+        "--item-attempts",
+        type=int,
+        help=(
+            "For all-subtask execute_verify mode, number of item-level random "
+            "strategy-combination attempts. Defaults to strategies_per_behavior."
+        ),
+    )
     parser.add_argument("--textgrad", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--isolated-textgrad", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
@@ -136,6 +175,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan-revision", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--verify-timeout", type=int, default=180)
+    parser.add_argument(
+        "--stop-on-target-error",
+        action="store_true",
+        help="Stop the run immediately when a target strategy returns an error.",
+    )
     parser.add_argument("--keep-container", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=None)
@@ -157,6 +201,8 @@ def main() -> int:
         args.plan_revision = bool(attacker_config.get("plan_revision", True))
     if args.run_all_strategies is None:
         args.run_all_strategies = bool(attacker_config.get("run_all_strategies", False))
+    if args.strategy_success_mode == "execute_verify":
+        args.verify = True
     attacker_config.update(
         {
             "provider": "transformers",

@@ -1,6 +1,7 @@
 configs/*.local.yml
 configs/moonbridge_deepseek_v4_pro.yml
 external/
+experiment/
 .vscode/
 .codex-manual-cache/
 .codex/
@@ -12,8 +13,9 @@ tools/__pycache__/
 .pytest_cache/
 logs/
 run_xteaming/logs/
-improved_decomposer/results/
+improved_decomposer/results/_archive_intermediate_20260821/
 results/
 run_xteaming/xteaming_vrap_codex_outputs/
 run_xteaming/agent_execution_outputs/
 agent_execution_outputs/
+data/nyuctf/.nyuctf/

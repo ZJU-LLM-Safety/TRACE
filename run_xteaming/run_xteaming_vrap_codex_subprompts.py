@@ -51,6 +51,8 @@ def main() -> int:
         args.plan_revision = bool(attacker_config.get("plan_revision", True))
     if args.run_all_strategies is None:
         args.run_all_strategies = bool(attacker_config.get("run_all_strategies", False))
+    if args.strategy_success_mode == "execute_verify":
+        args.verify = True
 
     attacker_config.update(
         {
@@ -110,6 +112,17 @@ def main() -> int:
         "post_subtask_execution_turn": args.post_subtask_execution_turn,
         "post_subtask_execution_prompt": args.post_subtask_execution_prompt,
         "bypass": args.bypass,
+        "strategy_success_mode": args.strategy_success_mode,
+        "strategy_execution_output_mode": args.strategy_execution_output_mode,
+        "strategy_execution_prompt_style": args.strategy_execution_prompt_style,
+        "strategy_execution_prompt_builder_model": (
+            args.strategy_execution_prompt_builder_model
+            if args.strategy_execution_prompt_style == "auto"
+            else None
+        ),
+        "strategy_execution_omit_subtask_info": args.strategy_execution_omit_subtask_info,
+        "strategy_execution_timeout": args.strategy_execution_timeout,
+        "item_attempts": args.item_attempts,
         "responses_base_url": args.responses_base_url,
         "anthropic_base_url": args.anthropic_base_url,
         "claude_home": getattr(args, "claude_home", None),
