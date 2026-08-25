@@ -30,6 +30,7 @@ from .utils import (
     rewrite_turn_numbers,
     with_strategy_meta,
 )
+from agent_execution.verification import verify_target_state
 
 
 def snapshot_label(*parts: Any) -> str:
@@ -623,7 +624,7 @@ def run_single_xteaming_strategy(
             },
         }
         if getattr(args, "strategy_success_mode", "judge") != "execute_verify":
-            strategy_run["verification"] = verify_item_compat(item, target, args) if args.verify else {
+            strategy_run["verification"] = verify_target_state(item, target, args) if args.verify else {
                 "status": "pending",
                 "ok": None,
                 "checks": [],

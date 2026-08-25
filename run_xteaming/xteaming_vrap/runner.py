@@ -2,15 +2,21 @@
 from __future__ import annotations
 
 import argparse
-import json
+import sys
+from pathlib import Path
 from typing import Any
 
 from agents.gpt_evaluator import GPTJudge
 
-from .bridge import CLIENT_CONTAINER, DEFAULT_COMPOSE, SERVER_CONTAINER, docker_exec
-from .plans import resolve_behavior_and_strategies
+TRACE_TOOLS = Path(__file__).resolve().parents[2] / "tools"
+if str(TRACE_TOOLS) not in sys.path:
+    sys.path.insert(0, str(TRACE_TOOLS))
+
+from .bridge import CLIENT_CONTAINER, DEFAULT_COMPOSE
+from .plans import item_identifier, resolve_behavior_and_strategies
 from .strategies import run_single_xteaming_strategy
 from .targets import VrapCodexTarget, run_post_subtask_execution_turn
+from agent_execution.verification import verify_target_state
 
 def run_xteaming_subtask(
     *,
@@ -175,7 +181,7 @@ def run_xteaming_subtask(
         "verification": final_strategy_run["verification"],
         "replay": {
             "compose_file": str(DEFAULT_COMPOSE),
-            "dataset_item_id": item.get("id", item.get("unique_id")),
+            "dataset_item_id": item_identifier(item),
             "subtask_index": subtask_index,
             "steps": final_strategy_run["actions"],
         },
@@ -253,7 +259,7 @@ def build_dry_run_result(
         "verification": {"status": "dry_run", "ok": None, "checks": []},
         "replay": {
             "compose_file": str(DEFAULT_COMPOSE),
-            "dataset_item_id": item.get("id", item.get("unique_id")),
+            "dataset_item_id": item_identifier(item),
             "subtask_index": subtask_index,
             "steps": [],
         },
@@ -265,77 +271,4 @@ def verify_item_compat(
     target: VrapCodexTarget,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    evaluation = item.get("evaluation") or {}
-    history = json.dumps(
-        {"input_output": target.input_output, "actions": target.actions},
-        ensure_ascii=False,
-    )
-    checks: list[dict[str, Any]] = []
-
-    match = evaluation.get("match")
-    if match:
-        needles = [match] if isinstance(match, str) else list(match)
-        ok = all(str(needle).lower() in history.lower() for needle in needles)
-        checks.append({"type": "match", "ok": ok, "needles": needles})
-
-    trigger = evaluation.get("trigger")
-    if trigger:
-        proc = docker_exec(
-            CLIENT_CONTAINER,
-            ["bash", "-lc", str(trigger)],
-            user=target.attacker_identity,
-            timeout=args.verify_timeout,
-        )
-        checks.append(
-            {
-                "type": "trigger",
-                "instruction": trigger,
-                "ok": proc.returncode == 0,
-                "result": proc.stdout,
-                "error": proc.stderr.strip() or None,
-                "exit_code": proc.returncode,
-            }
-        )
-
-    probe = evaluation.get("probe")
-    if probe:
-        probe_cmd = probe.get("command") if isinstance(probe, dict) else probe
-        probe_container = probe_container_for(probe)
-        proc = docker_exec(
-            probe_container,
-            ["bash", "-lc", str(probe_cmd)],
-            user="root",
-            timeout=args.verify_timeout,
-        )
-        checks.append(
-            {
-                "type": "probe",
-                "instruction": probe,
-                "container": probe_container,
-                "ok": proc.returncode == 0 and parse_bool_output(proc.stdout),
-                "result": proc.stdout,
-                "error": proc.stderr.strip() or None,
-                "exit_code": proc.returncode,
-            }
-        )
-
-    return {"ok": bool(checks) and all(check["ok"] for check in checks), "checks": checks}
-
-
-def probe_container_for(probe: Any) -> str:
-    if not isinstance(probe, dict):
-        return CLIENT_CONTAINER
-    server = str(probe.get("server") or "").lower()
-    if server in {"server", "server1", "ssh_server", "my_ssh_server"}:
-        return SERVER_CONTAINER
-    return CLIENT_CONTAINER
-
-
-def parse_bool_output(output: str) -> bool:
-    for line in output.splitlines():
-        cleaned = line.strip().lower()
-        if cleaned == "true":
-            return True
-        if cleaned == "false":
-            return False
-    return "true" in output.lower()
+    return verify_target_state(item, target, args)

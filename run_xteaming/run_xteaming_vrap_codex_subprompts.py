@@ -8,11 +8,21 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from run_xteaming_vrap_codex import build_parser as build_subtask_parser
+from run_xteaming_vrap_codex import (
+    build_parser as build_subtask_parser,
+    validate_lab_mode,
+)
 
-from xteaming_vrap.bridge import read_dataset, selected_items
+from xteaming_vrap.bridge import read_dataset
 from xteaming_vrap.models import TransformersTextGradEngine
-from xteaming_vrap.plans import load_attack_plans, load_config
+from xteaming_vrap.plans import (
+    item_identifier,
+    load_attack_plans,
+    load_config,
+    selected_items,
+    selected_subtasks,
+)
+from xteaming_vrap.runner import build_dry_run_result
 from xteaming_vrap.sequence import run_all_subprompts_for_item
 from xteaming_vrap.utils import apply_codex_env_defaults
 
@@ -34,6 +44,50 @@ def make_output_path(output_dir: Path | None, link_mode: str) -> Path:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = Path("xteaming_vrap_codex_outputs") / f"subprompt_sequence_{link_mode}_{stamp}"
     return output_dir / "results.jsonl"
+
+
+def build_sequence_dry_run_result(
+    *,
+    item: dict,
+    attacker_config: dict,
+    plans_by_behavior_id: dict,
+    args: argparse.Namespace,
+) -> dict:
+    subprompt_results = []
+    input_output_by_subprompt = []
+    for subtask_index, subtask in selected_subtasks(item, args):
+        subtask_result = build_dry_run_result(
+            item=item,
+            subtask_index=subtask_index,
+            subtask=subtask,
+            attacker_config=attacker_config,
+            plans_by_behavior_id=plans_by_behavior_id,
+            args=args,
+        )
+        subprompt_results.append(subtask_result)
+        input_output_by_subprompt.append(
+            {
+                "subtask_index": subtask_index,
+                "target": subtask,
+                "input_output": [],
+            }
+        )
+    return {
+        "item": item,
+        "run": {
+            "dry_run": True,
+            "lab_backend": args.lab_backend,
+            "target_backend": args.target_backend,
+            "target_model": args.claude_model
+            if args.target_backend == "claude"
+            else args.codex_model,
+            "link_mode": args.link_mode,
+            "subprompt_count": len(subprompt_results),
+        },
+        "subprompts": subprompt_results,
+        "input_output": input_output_by_subprompt,
+        "actions": [],
+    }
 
 
 def main() -> int:
@@ -79,6 +133,7 @@ def main() -> int:
         tg_config.setdefault("max_turns_per_phase", 4)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    validate_lab_mode(args)
     apply_codex_env_defaults(args)
     output_path = args.output or make_output_path(args.output_dir, args.link_mode)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,6 +154,9 @@ def main() -> int:
         "config": str(args.config),
         "plans_file": str(args.plans_file),
         "output": str(output_path),
+        "lab_backend": args.lab_backend,
+        "nyuctf_root": str(args.nyuctf_root) if args.lab_backend == "nyuctf" else None,
+        "image_name": args.image_name if args.lab_backend == "nyuctf" else None,
         "link_mode": args.link_mode,
         "pairs": args.pairs,
         "ids": args.ids,
@@ -145,18 +203,24 @@ def main() -> int:
 
     with output_path.open("a", encoding="utf-8") as out:
         for index, item in enumerate(items, 1):
-            item_id = item.get("id", item.get("unique_id"))
+            item_id = item_identifier(item)
             print(f"[{index}/{len(items)}] item={item_id} link_mode={args.link_mode}", flush=True)
             if args.dry_run:
-                raise ValueError("Dry-run is not implemented for subprompt sequence mode.")
-            result = run_all_subprompts_for_item(
-                item=item,
-                attacker_config=attacker_config,
-                tg_config=tg_config,
-                eval_config=eval_config,
-                plans_by_behavior_id=plans_by_behavior_id,
-                args=args,
-            )
+                result = build_sequence_dry_run_result(
+                    item=item,
+                    attacker_config=attacker_config,
+                    plans_by_behavior_id=plans_by_behavior_id,
+                    args=args,
+                )
+            else:
+                result = run_all_subprompts_for_item(
+                    item=item,
+                    attacker_config=attacker_config,
+                    tg_config=tg_config,
+                    eval_config=eval_config,
+                    plans_by_behavior_id=plans_by_behavior_id,
+                    args=args,
+                )
             out.write(json.dumps(result, ensure_ascii=False) + "\n")
             out.flush()
             print(

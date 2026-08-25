@@ -1,9 +1,9 @@
-"""Prepare AdvCUA subtasks as X-Teaming behavior-generation inputs.
+"""Prepare benchmark subtasks as X-Teaming behavior-generation inputs.
 
 The upstream X-Teaming plan generator expects a HarmBench-like CSV containing
 Behavior, BehaviorID, and FunctionalCategory.  This helper converts selected
-``data/advcua_test.jsonl`` subtasks into that shape and writes a config copy
-that points ``generate_attack_plans.py`` at the generated CSV.
+AdvCUA or NYUCTF subtasks into that shape and writes a config copy that points
+the plan generator at the generated CSV.
 """
 from __future__ import annotations
 
@@ -11,19 +11,21 @@ import argparse
 import csv
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import yaml
 
 
-def parse_pairs(value: str) -> list[tuple[int, int]]:
-    pairs: list[tuple[int, int]] = []
+def parse_pairs(value: str | None) -> list[tuple[str, int]]:
+    if not value:
+        return []
+    pairs: list[tuple[str, int]] = []
     for raw_pair in value.split(","):
         raw_pair = raw_pair.strip()
         if not raw_pair:
             continue
         item_id, subtask_index = raw_pair.split(":", 1)
-        pairs.append((int(item_id), int(subtask_index)))
+        pairs.append((item_id, int(subtask_index)))
     return pairs
 
 
@@ -35,32 +37,102 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def source_item_id(item: dict[str, Any], fallback_index: int) -> Any:
+    return item.get(
+        "id",
+        item.get("unique_id", item.get("challenge", fallback_index)),
+    )
+
+
+def item_keys(item: dict[str, Any], fallback_index: int) -> Iterable[str]:
+    values = [
+        fallback_index,
+        source_item_id(item, fallback_index),
+        item.get("id"),
+        item.get("unique_id"),
+        item.get("challenge"),
+        item.get("path"),
+    ]
+    for value in values:
+        if value is not None:
+            yield str(value)
+
+
+def all_subtask_pairs(dataset: list[dict[str, Any]]) -> list[tuple[str, int]]:
+    pairs: list[tuple[str, int]] = []
+    for index, item in enumerate(dataset):
+        subtasks = item.get("sub_prompts") or []
+        if not subtasks:
+            pairs.append((str(source_item_id(item, index)), 0))
+            continue
+        pairs.extend(
+            (str(source_item_id(item, index)), subtask_index)
+            for subtask_index in range(len(subtasks))
+        )
+    return pairs
+
+
 def selected_rows(
     dataset: list[dict[str, Any]],
-    pairs: list[tuple[int, int]],
+    pairs: list[tuple[str, int]],
 ) -> list[dict[str, Any]]:
-    items_by_id = {
-        item.get("id", item.get("unique_id")): item
-        for item in dataset
-    }
+    indexed_items = list(enumerate(dataset))
+    items_by_id: dict[str, tuple[int, dict[str, Any]]] = {}
+    for index, item in indexed_items:
+        for key in item_keys(item, index):
+            items_by_id[key] = (index, item)
+
+    if not pairs:
+        pairs = all_subtask_pairs(dataset)
+
     rows: list[dict[str, Any]] = []
     for item_id, subtask_index in pairs:
-        item = items_by_id[item_id]
-        subtask = item["sub_prompts"][subtask_index]
+        if item_id not in items_by_id:
+            raise KeyError(f"Dataset item {item_id!r} not found")
+        item_index, item = items_by_id[item_id]
+        item_source_id = source_item_id(item, item_index)
+        subtasks = item.get("sub_prompts") or []
+        if subtasks:
+            if subtask_index < 0 or subtask_index >= len(subtasks):
+                raise IndexError(
+                    f"item {item_id!r} has {len(subtasks)} subtasks, "
+                    f"cannot select index {subtask_index}"
+                )
+            subtask = subtasks[subtask_index]
+        elif subtask_index == 0:
+            subtask = (
+                item.get("harmful")
+                or item.get("query")
+                or item.get("prompt_to_os_agent")
+            )
+        else:
+            raise IndexError(f"item {item_id!r} has no subtasks, only index 0 is valid")
         rows.append(
             {
                 "Behavior": subtask,
-                "BehaviorID": f"{item_id}:subtask:{subtask_index}",
+                "BehaviorID": f"{item_source_id}:subtask:{subtask_index}",
                 "FunctionalCategory": "standard",
-                "AdvCUAItemID": item_id,
+                "SourceItemID": item_source_id,
+                "SubtaskIndex": subtask_index,
+                "FullPrompt": item.get("prompt_to_os_agent")
+                or item.get("harmful")
+                or item.get("query", ""),
+                "AdvCUAItemID": item.get("id", item.get("unique_id", "")),
                 "AdvCUASubtaskIndex": subtask_index,
                 "AdvCUAPromptToOSAgent": item.get("prompt_to_os_agent", ""),
+                "CTFItemIndex": item_index,
+                "CTFChallenge": item.get("challenge", ""),
+                "CTFCategory": item.get("category", ""),
+                "CTFPath": item.get("path", ""),
+                "CTFEvaluationType": item.get("evaluation_type", ""),
             }
         )
     return rows
 
 
 def write_behaviors_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        raise ValueError("No behavior rows selected")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as out:
         writer = csv.DictWriter(out, fieldnames=list(rows[0]))
@@ -88,11 +160,18 @@ def write_config(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Convert AdvCUA subtasks into X-Teaming behavior inputs."
+        description="Convert AdvCUA or NYUCTF subtasks into X-Teaming behavior inputs."
     )
     parser.add_argument("--dataset", type=Path, default=Path("data/advcua_test.jsonl"))
     parser.add_argument("--config", type=Path, default=Path("config/config.yaml"))
-    parser.add_argument("--pairs", required=True)
+    parser.add_argument(
+        "--pairs",
+        help=(
+            "Comma-separated item:subtask selections. AdvCUA items use their id; "
+            "NYUCTF items can use zero-based jsonl row index, challenge name, or path. "
+            "If omitted, all subtasks are selected."
+        ),
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -119,7 +198,7 @@ def main() -> int:
     print(f"Wrote {len(rows)} behavior row(s) to {behavior_csv}", flush=True)
     print(f"Wrote X-Teaming config to {config_path}", flush=True)
     print(
-        "Next: conda run -n x-teaming python generate_attack_plans.py "
+        "Next: conda run -n x-teaming python generate_attack_plans_compat.py "
         f"-c {config_path}",
         flush=True,
     )

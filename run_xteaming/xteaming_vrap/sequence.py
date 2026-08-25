@@ -12,6 +12,7 @@ from typing import Any
 from .bridge import CLIENT_CONTAINER
 from .plans import resolve_behavior_and_strategies
 from .runner import run_xteaming_subtask
+from .utils import redact_secrets
 
 
 TRACE_ROOT = Path(__file__).resolve().parents[2]
@@ -83,6 +84,7 @@ class XTeamingSubtaskRunner(MultiSubtaskRunner):
             "claude_home": getattr(self.args, "claude_home", None),
             "claude_runner": getattr(self.args, "claude_runner", None),
             "container": CLIENT_CONTAINER,
+            "lab_backend": getattr(self.args, "lab_backend", "vrap"),
             "link_mode": self.args.link_mode,
             "subprompt_count": len(self.subprompts),
             "target_execution_mode": self.args.target_execution_mode,
@@ -117,6 +119,7 @@ class XTeamingItemExecuteVerifyRunner:
         self.plans_by_behavior_id = plans_by_behavior_id
         self.args = args
         self.candidates_by_subtask = self._load_candidates()
+        self._attempted_combo_keys: set[tuple[tuple[int, int], ...]] = set()
 
     def _load_candidates(self) -> list[list[tuple[dict[str, Any], dict[str, Any]]]]:
         candidates: list[list[tuple[dict[str, Any], dict[str, Any]]]] = []
@@ -152,7 +155,7 @@ class XTeamingItemExecuteVerifyRunner:
     def _sample_combinations(self) -> list[tuple[tuple[dict[str, Any], dict[str, Any]], ...]]:
         max_attempts = self._max_attempts()
         rng = random.Random(self.args.strategy_sample_seed)
-        seen: set[tuple[tuple[int, int], ...]] = set()
+        seen: set[tuple[tuple[int, int], ...]] = set(self._attempted_combo_keys)
         sampled: list[tuple[tuple[dict[str, Any], dict[str, Any]], ...]] = []
 
         def combo_key(combo: tuple[tuple[dict[str, Any], dict[str, Any]], ...]) -> tuple[tuple[int, int], ...]:
@@ -169,6 +172,7 @@ class XTeamingItemExecuteVerifyRunner:
             if key in seen:
                 continue
             seen.add(key)
+            self._attempted_combo_keys.add(key)
             sampled.append(combo)
 
         if len(sampled) < max_attempts:
@@ -177,6 +181,7 @@ class XTeamingItemExecuteVerifyRunner:
                 if key in seen:
                     continue
                 seen.add(key)
+                self._attempted_combo_keys.add(key)
                 sampled.append(tuple(combo))
                 if len(sampled) >= max_attempts:
                     break
@@ -219,6 +224,7 @@ class XTeamingItemExecuteVerifyRunner:
             "claude_model": getattr(self.args, "claude_model", None),
             "claude_runner": getattr(self.args, "claude_runner", None),
             "container": CLIENT_CONTAINER,
+            "lab_backend": getattr(self.args, "lab_backend", "vrap"),
             "link_mode": self.args.link_mode,
             "subprompt_count": len(self.subprompts),
             "strategy_success_mode": "execute_verify",
@@ -253,56 +259,75 @@ class XTeamingItemExecuteVerifyRunner:
             subprompt_results = []
             input_output_by_subprompt = []
             execution_results = []
+            attempt_error = None
+            verification = {
+                "status": "skipped",
+                "ok": False,
+                "checks": [],
+                "reason": "attempt did not complete",
+            }
+            execution_summary = {}
 
-            for subtask_number, (subtask_index, subtask) in enumerate(
-                enumerate(self.subprompts),
-                1,
-            ):
-                _strategy, strategy_meta = combo[subtask_index]
-                print(
-                    f"subprompt {subtask_number}/{subtask_count} "
-                    f"index={subtask_index} "
-                    f"strategy=({strategy_meta['set_number']}, {strategy_meta['strategy_number']}) "
-                    f"target={subtask[:100]!r}",
-                    flush=True,
-                )
-                subtask_result = self._run_subtask_with_strategy(
-                    subtask_index=subtask_index,
-                    subtask=subtask,
-                    strategy_meta=strategy_meta,
-                )
-                subprompt_results.append(subtask_result)
-
-            with ContinuousItemExecution(item=self.item, args=self.args) as executor:
-                for subtask_number, (subtask_index, subtask_result) in enumerate(
-                    enumerate(subprompt_results),
+            try:
+                for subtask_number, (subtask_index, subtask) in enumerate(
+                    enumerate(self.subprompts),
                     1,
                 ):
-                    subtask = self.subprompts[subtask_index]
+                    _strategy, strategy_meta = combo[subtask_index]
                     print(
-                        f"  executing subprompt {subtask_number}/{subtask_count} "
-                        f"index={subtask_index}",
+                        f"subprompt {subtask_number}/{subtask_count} "
+                        f"index={subtask_index} "
+                        f"strategy=({strategy_meta['set_number']}, {strategy_meta['strategy_number']}) "
+                        f"target={subtask[:100]!r}",
                         flush=True,
                     )
-                    execution = executor.execute_subtask_output(
-                        subtask_number=subtask_number,
-                        subtask_count=subtask_count,
+                    subtask_result = self._run_subtask_with_strategy(
                         subtask_index=subtask_index,
                         subtask=subtask,
-                        strategy_run=subtask_result,
+                        strategy_meta=strategy_meta,
                     )
-                    subtask_result["item_attempt_execution"] = execution
-                    execution_results.append(execution)
-                    input_output_by_subprompt.append(
-                        {
-                            "subtask_index": subtask_index,
-                            "target": subtask,
-                            "input_output": subtask_result.get("input_output") or [],
-                            "execution_input_output": execution.get("input_output") or [],
-                        }
-                    )
-                verification = executor.verify()
-                execution_summary = executor.summary()
+                    subprompt_results.append(subtask_result)
+
+                with ContinuousItemExecution(item=self.item, args=self.args) as executor:
+                    for subtask_number, (subtask_index, subtask_result) in enumerate(
+                        enumerate(subprompt_results),
+                        1,
+                    ):
+                        subtask = self.subprompts[subtask_index]
+                        print(
+                            f"  executing subprompt {subtask_number}/{subtask_count} "
+                            f"index={subtask_index}",
+                            flush=True,
+                        )
+                        execution = executor.execute_subtask_output(
+                            subtask_number=subtask_number,
+                            subtask_count=subtask_count,
+                            subtask_index=subtask_index,
+                            subtask=subtask,
+                            strategy_run=subtask_result,
+                        )
+                        subtask_result["item_attempt_execution"] = execution
+                        execution_results.append(execution)
+                        input_output_by_subprompt.append(
+                            {
+                                "subtask_index": subtask_index,
+                                "target": subtask,
+                                "input_output": subtask_result.get("input_output") or [],
+                                "execution_input_output": execution.get("input_output") or [],
+                            }
+                        )
+                    verification = executor.verify()
+                    execution_summary = executor.summary()
+            except Exception as exc:
+                attempt_error = {
+                    "type": type(exc).__name__,
+                    "message": redact_secrets(str(exc)),
+                }
+                print(
+                    f"item attempt {attempt_index} failed; trying next combination: "
+                    f"{type(exc).__name__}: {attempt_error['message']}",
+                    flush=True,
+                )
 
             attempt_result = {
                 "attempt": attempt_index,
@@ -316,6 +341,8 @@ class XTeamingItemExecuteVerifyRunner:
                 "verification": verification,
                 "verification_ok": bool(verification.get("ok")),
             }
+            if attempt_error is not None:
+                attempt_result["error"] = attempt_error
             attempts.append(attempt_result)
             if attempt_result["verification_ok"]:
                 successful_attempt = attempt_result

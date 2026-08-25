@@ -373,6 +373,7 @@ def run_codex_in_container(
     write_config: bool,
     responses_base_url: str | None,
     responses_env_key: str,
+    resume_thread_id: str | None = None,
 ) -> dict[str, Any]:
     missing = missing_backend_reason(container, "codex")
     if missing:
@@ -408,6 +409,8 @@ def run_codex_in_container(
         skip_git_repo_check=True,
     )
     cmd = ["codex", "exec"]
+    if resume_thread_id:
+        cmd += ["resume", resume_thread_id]
     if opts.model:
         cmd += ["--model", opts.model]
     cmd += ["--json", "--skip-git-repo-check"]
@@ -451,6 +454,8 @@ def run_claude_in_container(
     anthropic_base_url: str | None = None,
     anthropic_env_key: str = "ANTHROPIC_API_KEY",
     allowed_tools: list[str] | None = None,
+    resume_session_id: str | None = None,
+    fork_session: bool = False,
 ) -> dict[str, Any]:
     claude_python = find_claude_sdk_python(container)
     missing = missing_backend_reason(container, "claude", claude_python=claude_python)
@@ -488,9 +493,9 @@ def run_claude_in_container(
             "allowed_tools": allowed_tools or [],
             "disallowed_tools": [],
             "system_prompt": None,
-            "resume_session_id": None,
-            "continue_conversation": False,
-            "fork_session": False,
+            "resume_session_id": resume_session_id,
+            "continue_conversation": bool(resume_session_id),
+            "fork_session": fork_session,
             "cwd": workdir,
         }
         proc = docker_exec(

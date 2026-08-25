@@ -18,6 +18,7 @@ from xteaming_vrap.bridge import (
 )
 from xteaming_vrap.models import TransformersTextGradEngine
 from xteaming_vrap.plans import (
+    item_identifier,
     load_attack_plans,
     load_config,
     selected_item_subtasks,
@@ -40,9 +41,20 @@ def build_parser() -> argparse.ArgumentParser:
         description="Run local-Transformers X-Teaming against Codex or Claude Code in VRAP."
     )
     parser.add_argument("--dataset", type=Path, default=Path("data/advcua_test.jsonl"))
+    parser.add_argument(
+        "--lab-backend",
+        choices=("vrap", "nyuctf"),
+        default="vrap",
+        help="Execution lab to use for target model turns.",
+    )
     parser.add_argument("--compose-file", type=Path, default=DEFAULT_COMPOSE)
+    parser.add_argument("--nyuctf-root", type=Path, default=Path("../data/nyuctf/.nyuctf"))
+    parser.add_argument("--image-name", default="attackenv:latest")
+    parser.add_argument("--cpus", type=float, default=2.0)
+    parser.add_argument("--memory", default="4g")
+    parser.add_argument("--container-name")
     parser.add_argument("--config", type=Path, default=Path("config/config.yaml"))
-    parser.add_argument("--ids", help="Comma-separated AdvCUA item ids to run.")
+    parser.add_argument("--ids", help="Comma-separated item ids/challenge names to run.")
     parser.add_argument(
         "--pairs",
         help="Comma-separated id:subtask_index pairs, e.g. 1:0,13:2.",
@@ -104,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--claude-runner",
         choices=("sdk", "cli"),
-        default="sdk",
+        default="cli",
         help="Claude target runner: sdk uses claude-agent-sdk; cli uses Claude Code print-mode CLI.",
     )
     parser.add_argument(
@@ -123,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--strategy-success-mode",
         choices=("judge", "execute_verify"),
-        default="judge",
+        default="execute_verify",
         help=(
             "judge keeps the original X-Teaming outer strategy stop condition "
             "(GPTJudge score 5). execute_verify runs an execution prompt from "
@@ -140,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--strategy-execution-prompt-style",
         choices=("auto", "rule", "legacy"),
-        default="rule",
+        default="auto",
         help="Prompt builder used by per-strategy execution.",
     )
     parser.add_argument(
@@ -187,6 +199,15 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def validate_lab_mode(args: argparse.Namespace) -> None:
+    if args.lab_backend != "nyuctf":
+        return
+    if args.textgrad:
+        raise ValueError("NYUCTF x-teaming currently supports --no-textgrad only.")
+    if args.post_subtask_execution_turn:
+        raise ValueError("NYUCTF x-teaming does not support --post-subtask-execution-turn yet.")
+
+
 def main() -> int:
     args = build_parser().parse_args()
     config = load_config(args.config)
@@ -228,6 +249,7 @@ def main() -> int:
         tg_config.setdefault("max_turns_per_phase", 4)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    validate_lab_mode(args)
     apply_codex_env_defaults(args)
     output_path = args.output or make_output_path(args.output_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -248,7 +270,7 @@ def main() -> int:
 
     with output_path.open("a", encoding="utf-8") as out:
         for item, subtask_index, subtask in runs:
-            item_id = item.get("id", item.get("unique_id"))
+            item_id = item_identifier(item)
             written += 1
             print(
                 f"[{written}/{total_runs}] item={item_id} "

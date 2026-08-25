@@ -47,6 +47,8 @@ else
 fi
 cd "$TRACE_ROOT"
 
+# Build the NYUCTF target image.
+python envs_build.py
 # No Qwen path is required by default. To use local weights instead of the
 # default Qwen/Qwen2.5-32B-Instruct model id, set QWEN32B or pass the model
 # path through --attacker-model-path / --transformers-model-path.
@@ -79,7 +81,7 @@ The original X-Teaming plan generator expects a HarmBench-like CSV. This helper 
 cd "$TRACE_ROOT/run_xteaming"
 conda run --no-capture-output -n x-teaming python prepare_advcua_xteaming_inputs.py \
   --dataset data/advcua_easy.jsonl \
-  --config config/config_gpt4o_2024_11_20_serial_3strategies.yaml \
+  --config config/config.yaml \
   --pairs 15:0,15:1,15:2,15:3 \
   --output-dir xteaming_vrap_codex_outputs/example_id15_inputs
 ```
@@ -91,6 +93,24 @@ For the 5-item AdvCUA test set used in the experiments, change `--dataset` and `
 --pairs 1:0,13:2,2:5,3:4,19:3
 ```
 
+For the NYUCTF jsonl input, omit `--pairs` to export every decomposed CTF
+subtask. NYUCTF behavior IDs use `id`, `unique_id`, `challenge`, then jsonl row
+index, matching the decomposer fallback style:
+
+```bash
+cd "$TRACE_ROOT/run_xteaming"
+conda run --no-capture-output -n x-teaming python prepare_advcua_xteaming_inputs.py \
+  --dataset data/nyuctf_test.jsonl \
+  --config config/config.yaml \
+  --output-dir xteaming_vrap_codex_outputs/nyuctf_test_inputs
+```
+
+To select a subset, use challenge names or row indexes:
+
+```bash
+--pairs beleaf:0,unVirtualization:2,2:3
+```
+
 ### 2. Generate Attack Plans
 
 Default generation is 5 sets x 10 strategies per behavior. Use the compatible generator because it tolerates wrapped JSON responses from OpenAI-compatible endpoints.
@@ -100,6 +120,18 @@ cd "$TRACE_ROOT/run_xteaming"
 env OPENAI_API_KEY="$OPENAI_API_KEY" OPENAI_BASE_URL="$OPENAI_BASE_URL" \
 conda run --no-capture-output -n x-teaming python generate_attack_plans_compat.py \
   -c xteaming_vrap_codex_outputs/example_id15_inputs/config.yaml \
+  --num-sets 5 \
+  --strategies-per-set 10 \
+  --backend config
+```
+
+For the NYUCTF inputs above:
+
+```bash
+cd "$TRACE_ROOT/run_xteaming"
+env OPENAI_API_KEY="$OPENAI_API_KEY" OPENAI_BASE_URL="$OPENAI_BASE_URL" \
+conda run --no-capture-output -n x-teaming python generate_attack_plans_compat.py \
+  -c xteaming_vrap_codex_outputs/nyuctf_test_inputs/config.yaml \
   --num-sets 5 \
   --strategies-per-set 10 \
   --backend config
@@ -135,6 +167,7 @@ Single-subtask mode writes one result row per selected subtask:
 cd "$TRACE_ROOT/run_xteaming"
 env -u http_proxy -u https_proxy -u all_proxy \
     -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    PYTHONPATH="$TRACE_ROOT:$TRACE_ROOT/run_xteaming" \
     no_proxy='localhost,127.0.0.1,::1,192.168.2.1' \
     NO_PROXY='localhost,127.0.0.1,::1,192.168.2.1' \
     OPENAI_API_KEY="$OPENAI_API_KEY" \
@@ -164,6 +197,7 @@ Multi-subtask mode writes one result row per item. Each row's `input_output` is 
 cd "$TRACE_ROOT/run_xteaming"
 env -u http_proxy -u https_proxy -u all_proxy \
     -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    PYTHONPATH="$TRACE_ROOT:$TRACE_ROOT/run_xteaming" \
     no_proxy='localhost,127.0.0.1,::1,192.168.2.1' \
     NO_PROXY='localhost,127.0.0.1,::1,192.168.2.1' \
     OPENAI_API_KEY="$OPENAI_API_KEY" \
@@ -187,6 +221,87 @@ conda run --no-capture-output -n x-teaming python run_xteaming_vrap_codex_subpro
   --strategies-per-behavior 3 \
   --output-dir xteaming_vrap_codex_outputs/example_id15_xteaming_session
 ```
+
+NYUCTF/CTF uses the same x-teaming attack-plan format, but runs target turns in
+the NYUCTF Docker lab instead of the AdvCUA/VRAP compose lab. Use
+`--no-textgrad` for NYUCTF. Keep GPTJudge enabled; `--strategy-success-mode
+execute_verify` runs the selected x-teaming strategy outputs in a fresh NYUCTF
+container and accepts an attempt only when the NYUCTF gold check passes.
+
+Single-subtask NYUCTF smoke run:
+
+```bash
+cd "$TRACE_ROOT/run_xteaming"
+env -u http_proxy -u https_proxy -u all_proxy \
+    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    PYTHONPATH="$TRACE_ROOT:$TRACE_ROOT/run_xteaming" \
+    no_proxy='localhost,127.0.0.1,::1,192.168.2.1' \
+    NO_PROXY='localhost,127.0.0.1,::1,192.168.2.1' \
+    OPENAI_API_KEY="$OPENAI_API_KEY" \
+    OPENAI_BASE_URL="$OPENAI_BASE_URL" \
+    OPENAI_TIMEOUT=120 \
+conda run --no-capture-output -n x-teaming python run_xteaming_vrap_codex.py \
+  --lab-backend nyuctf \
+  --dataset data/nyuctf_test.jsonl \
+  --nyuctf-root ../data/nyuctf/.nyuctf \
+  --image-name attackenv:latest \
+  --config config/config_gpt4o_2024_11_20_serial_3strategies.yaml \
+  --plans-file generated_attack_plans/attack_plans_nyuctf.json \
+  --ids beleaf \
+  --subtask-index 0 \
+  --target-backend codex \
+  --codex-model gpt-5.5 \
+  --responses-base-url "$OPENAI_BASE_URL" \
+  --responses-env-key OPENAI_API_KEY \
+  --bypass \
+  --no-textgrad \
+  --strategy-success-mode execute_verify \
+  --strategy-execution-prompt-style auto \
+  --attacker-model-path /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct/ \
+  --strategies-per-behavior 3 \
+  --output-dir xteaming_vrap_codex_outputs/nyuctf_beleaf_subtask0_xteaming
+```
+
+Multi-subtask NYUCTF run:
+
+```bash
+cd "$TRACE_ROOT/run_xteaming"
+env -u http_proxy -u https_proxy -u all_proxy \
+    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    PYTHONPATH="$TRACE_ROOT:$TRACE_ROOT/run_xteaming" \
+    no_proxy='localhost,127.0.0.1,::1,192.168.2.1' \
+    NO_PROXY='localhost,127.0.0.1,::1,192.168.2.1' \
+    OPENAI_API_KEY="$OPENAI_API_KEY" \
+    OPENAI_BASE_URL="$OPENAI_BASE_URL" \
+    OPENAI_TIMEOUT=120 \
+conda run --no-capture-output -n x-teaming python run_xteaming_vrap_codex_subprompts.py \
+  --lab-backend nyuctf \
+  --dataset data/nyuctf_test.jsonl \
+  --nyuctf-root ../data/nyuctf/.nyuctf \
+  --image-name attackenv:latest \
+  --config config/config_gpt4o_2024_11_20_serial_3strategies.yaml \
+  --plans-file generated_attack_plans/attack_plans_nyuctf.json \
+  --ids beleaf \
+  --all-subtasks \
+  --link-mode session \
+  --target-backend codex \
+  --codex-model gpt-5.5 \
+  --responses-base-url "$OPENAI_BASE_URL" \
+  --responses-env-key OPENAI_API_KEY \
+  --bypass \
+  --no-textgrad \
+  --strategy-success-mode execute_verify \
+  --strategy-execution-prompt-style auto \
+  --attacker-model-path /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct/ \
+  --strategies-per-behavior 3 \
+  --output-dir xteaming_vrap_codex_outputs/nyuctf_beleaf_xteaming_session
+```
+
+In multi-subtask `execute_verify` mode, each item attempt first runs one selected
+x-teaming strategy for every subtask. It then starts a new NYUCTF execution
+container, executes the saved strategy outputs across all subtasks in one
+continuous agent session, runs the gold verification, and tries the next sampled
+strategy combination if execution or verification fails.
 
 For Codex + GPT-5.5 as the target model, the x-teaming command uses the same OpenAI-compatible endpoint for the target, GPTJudge, and TextGrad. This matches the migrated Codex test path:
 

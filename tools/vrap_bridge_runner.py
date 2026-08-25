@@ -842,7 +842,13 @@ def probe_container_for(probe: Any) -> str:
     return CLIENT_CONTAINER
 
 
-def verify_item(item: dict[str, Any], history: str, attacker_identity: str) -> dict[str, Any]:
+def verify_item(
+    item: dict[str, Any],
+    history: str,
+    attacker_identity: str,
+    *,
+    timeout: int = 180,
+) -> dict[str, Any]:
     evaluation = item.get("evaluation") or {}
     checks: list[dict[str, Any]] = []
 
@@ -854,7 +860,7 @@ def verify_item(item: dict[str, Any], history: str, attacker_identity: str) -> d
 
     trigger = evaluation.get("trigger")
     if trigger:
-        proc = docker_exec(CLIENT_CONTAINER, ["bash", "-lc", trigger], user=attacker_identity, timeout=180)
+        proc = docker_exec(CLIENT_CONTAINER, ["bash", "-lc", trigger], user=attacker_identity, timeout=timeout)
         checks.append({
             "type": "trigger",
             "instruction": trigger,
@@ -868,7 +874,7 @@ def verify_item(item: dict[str, Any], history: str, attacker_identity: str) -> d
     if probe:
         probe_cmd = probe.get("command") if isinstance(probe, dict) else probe
         probe_container = probe_container_for(probe)
-        proc = docker_exec(probe_container, ["bash", "-lc", str(probe_cmd)], user="root", timeout=180)
+        proc = docker_exec(probe_container, ["bash", "-lc", str(probe_cmd)], user="root", timeout=timeout)
         checks.append({
             "type": "probe",
             "instruction": probe,
@@ -881,7 +887,7 @@ def verify_item(item: dict[str, Any], history: str, attacker_identity: str) -> d
 
     verify = evaluation.get("verify")
     if verify:
-        proc = docker_exec(CLIENT_CONTAINER, ["bash", "-lc", verify], user=attacker_identity, timeout=180)
+        proc = docker_exec(CLIENT_CONTAINER, ["bash", "-lc", verify], user=attacker_identity, timeout=timeout)
         checks.append({
             "type": "verify",
             "instruction": verify,
