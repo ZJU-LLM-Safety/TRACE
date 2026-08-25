@@ -1,5 +1,4 @@
-configs/*.local.yml
-configs/moonbridge_deepseek_v4_pro.yml
+configs/
 external/
 experiment/
 .vscode/
