@@ -336,6 +336,47 @@ conda run --no-capture-output -n x-teaming python run_xteaming_vrap_codex_subpro
   --output-dir xteaming_vrap_codex_outputs/example_id15_codex_gpt55_xteaming
 ```
 
+For the `experiment/` online-strategy runner, generate one strategy immediately
+before each subtask conversation and then execute the saved subtask outputs in a
+single linked Codex session:
+
+```bash
+cd "$TRACE_ROOT/experiment"
+env -u http_proxy -u https_proxy -u all_proxy \
+    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    CUDA_VISIBLE_DEVICES=2,3,5 \
+    OPENAI_API_KEY="$OPENAI_API_KEY" \
+    OPENAI_BASE_URL="$OPENAI_BASE_URL" \
+    OPENAI_TIMEOUT=120 \
+    no_proxy='localhost,127.0.0.1,::1,192.168.2.1' \
+    NO_PROXY='localhost,127.0.0.1,::1,192.168.2.1' \
+conda run --no-capture-output -n x-teaming python run_vrap_codex_subprompts_online.py \
+  --dataset data/advcua_easy.jsonl \
+  --config config/config_online_qwen_local_gpt55_id15.yaml \
+  --ids 15 \
+  --all-subtasks \
+  --link-mode session \
+  --target-backend codex \
+  --codex-model gpt-5.5 \
+  --responses-base-url "$OPENAI_BASE_URL" \
+  --responses-env-key OPENAI_API_KEY \
+  --bypass \
+  --no-textgrad \
+  --no-plan-revision \
+  --strategy-success-mode execute_verify \
+  --strategy-execution-prompt-style auto \
+  --attacker-model-path /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct \
+  --attacker-max-new-tokens 1024 \
+  --device-map auto \
+  --output-dir experiment_outputs/id15_online_qwen25_32b_gpt55
+```
+
+This writes the final item result to `results.jsonl`. It also writes
+`online_artifacts.jsonl`, with one `strategy_generated` event and one
+`conversation_completed` event per subtask. The completed event records the
+strategy used for that subtask plus the attacker and target inputs for the
+multi-turn conversation.
+
 Bundled config templates:
 
 - `config/config.yaml`: upstream-style default config copied from the original x-teaming tree.

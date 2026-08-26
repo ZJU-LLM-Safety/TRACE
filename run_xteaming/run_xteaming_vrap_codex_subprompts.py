@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--link-mode",
         choices=("session", "action_summary"),
+        default="session",
         required=True,
         help="How to connect consecutive subprompts within the same item.",
     )
@@ -81,6 +82,7 @@ def build_sequence_dry_run_result(
             "target_model": args.claude_model
             if args.target_backend == "claude"
             else args.codex_model,
+            "claude_runner": getattr(args, "claude_runner", None),
             "link_mode": args.link_mode,
             "subprompt_count": len(subprompt_results),
         },

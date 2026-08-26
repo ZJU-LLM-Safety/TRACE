@@ -108,5 +108,6 @@ class VrapCodexTarget(_VrapCodexTarget):
                 allowed_tools=parse_csv_arg(getattr(self.args, "allowed_tools", None)),
                 resume_session_id=self.resume_id if should_resume else None,
                 fork_session=bool(getattr(self.args, "fork_session", False)),
+                claude_runner=getattr(self.args, "claude_runner", "sdk"),
             )
         raise ValueError(f"Unsupported target backend: {self.backend!r}")

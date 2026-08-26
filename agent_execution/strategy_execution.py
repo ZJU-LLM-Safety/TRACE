@@ -311,6 +311,7 @@ def run_strategy_execution_prompt(
                 allowed_tools=_parse_csv_arg(getattr(args, "allowed_tools", None)),
                 resume_session_id=resume_session_id,
                 fork_session=bool(getattr(args, "fork_session", False)),
+                claude_runner=getattr(args, "claude_runner", "sdk"),
             )
         return run_claude_in_vrap(
             prompt,

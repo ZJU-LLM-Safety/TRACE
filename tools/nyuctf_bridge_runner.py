@@ -456,12 +456,34 @@ def run_claude_in_container(
     allowed_tools: list[str] | None = None,
     resume_session_id: str | None = None,
     fork_session: bool = False,
+    claude_runner: str = "sdk",
 ) -> dict[str, Any]:
+    if claude_runner == "cli":
+        return run_claude_cli_in_container(
+            prompt,
+            container=container,
+            workdir=workdir,
+            model=model,
+            user=user,
+            timeout=timeout,
+            bypass=bypass,
+            max_turns=max_turns,
+            anthropic_base_url=anthropic_base_url,
+            anthropic_env_key=anthropic_env_key,
+            allowed_tools=allowed_tools,
+            resume_session_id=resume_session_id,
+            continue_conversation=bool(resume_session_id),
+            fork_session=fork_session,
+        )
+    if claude_runner != "sdk":
+        raise ValueError(f"unsupported Claude runner: {claude_runner!r}")
+
     claude_python = find_claude_sdk_python(container)
     missing = missing_backend_reason(container, "claude", claude_python=claude_python)
     if missing:
         return {
             "backend": "claude",
+            "runner": "sdk",
             "returncode": 127,
             "text": "",
             "error": missing,
@@ -514,6 +536,7 @@ def run_claude_in_container(
         text = str(parsed.get("final_text") or "")
     return {
         "backend": "claude",
+        "runner": "sdk",
         "returncode": proc.returncode,
         "text": text,
         "error": proc.stderr.strip() or None,
@@ -528,6 +551,145 @@ def run_claude_in_container(
     }
 
 
+def run_claude_cli_in_container(
+    prompt: str,
+    *,
+    container: str,
+    workdir: str,
+    model: str | None,
+    user: str,
+    timeout: int,
+    bypass: bool,
+    max_turns: int | None,
+    anthropic_base_url: str | None = None,
+    anthropic_env_key: str = "ANTHROPIC_API_KEY",
+    allowed_tools: list[str] | None = None,
+    resume_session_id: str | None = None,
+    continue_conversation: bool = False,
+    fork_session: bool = False,
+) -> dict[str, Any]:
+    missing = missing_claude_cli_reason(container)
+    if missing:
+        return {
+            "backend": "claude",
+            "runner": "cli",
+            "returncode": 127,
+            "text": "",
+            "error": missing,
+            "thread_id": None,
+            "actions": [],
+            "debug": None,
+            "command": "claude -p <prompt>",
+        }
+
+    env = collect_env(CLAUDE_ENV_KEYS)
+    env.setdefault("HOME", "/root" if user == "root" else f"/home/{user}")
+    env.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+    env.setdefault("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", "180000")
+    if anthropic_base_url:
+        env["ANTHROPIC_BASE_URL"] = anthropic_base_url.rstrip("/")
+    if anthropic_env_key != "ANTHROPIC_API_KEY" and os.environ.get(anthropic_env_key):
+        env["ANTHROPIC_API_KEY"] = os.environ[anthropic_env_key]
+
+    docker_exec(container, ["mkdir", "-p", env["HOME"]], user="root", timeout=30)
+
+    cmd = ["claude", "-p", prompt]
+    if model:
+        cmd += ["--model", model]
+    cmd += ["--output-format", "stream-json", "--verbose"]
+    if bypass:
+        cmd.append("--dangerously-skip-permissions")
+    if max_turns is not None:
+        cmd += ["--max-turns", str(max_turns)]
+    for tool in allowed_tools or []:
+        cmd += ["--allowedTools", tool]
+    if resume_session_id:
+        cmd += ["--resume", resume_session_id]
+    if continue_conversation:
+        cmd.append("--continue")
+    if fork_session:
+        cmd.append("--fork-session")
+
+    proc = docker_exec(
+        container,
+        cmd,
+        user=user,
+        workdir=workdir,
+        env=env,
+        timeout=timeout,
+    )
+    parsed = parse_claude_cli_stream(proc.stdout)
+    text = _extract_claude_text(parsed)
+    if isinstance(parsed, dict) and not text:
+        text = str((parsed.get("result_meta") or {}).get("result") or "")
+    if not text:
+        text = proc.stdout.strip()
+    return {
+        "backend": "claude",
+        "runner": "cli",
+        "returncode": proc.returncode,
+        "text": text,
+        "error": proc.stderr.strip() or None,
+        "thread_id": (
+            str((parsed.get("result_meta") or {}).get("session_id") or "")
+            if isinstance(parsed, dict)
+            else None
+        ) or None,
+        "actions": extract_claude_actions(parsed),
+        "debug": summarize_claude_debug(parsed),
+        "command": " ".join(shlex.quote(part) for part in cmd[:1] + ["-p", "<prompt>"] + cmd[3:]),
+    }
+
+
+def parse_claude_cli_stream(stdout: str) -> dict[str, Any]:
+    events = _parse_jsonl(stdout)
+    if not events:
+        parsed = _try_json(stdout)
+        if isinstance(parsed, dict):
+            return parsed
+        return {"final_text": stdout.strip(), "messages": [], "tool_calls": [], "result_meta": {}}
+
+    messages: list[dict[str, Any]] = []
+    tool_calls: list[dict[str, Any]] = []
+    result_meta: dict[str, Any] = {}
+    final_text = ""
+    session_id: str | None = None
+
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("session_id"):
+            session_id = str(event.get("session_id"))
+        message = event.get("message")
+        if isinstance(message, dict):
+            messages.append(message)
+            for block in _claude_content_blocks(message.get("content")):
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "text" and block.get("text"):
+                    final_text = str(block.get("text"))
+                elif block.get("type") == "tool_use":
+                    tool_calls.append(block)
+        if event.get("type") == "result":
+            result_meta = dict(event)
+            if event.get("result"):
+                final_text = str(event.get("result"))
+            if event.get("session_id"):
+                session_id = str(event.get("session_id"))
+
+    if session_id and "session_id" not in result_meta:
+        result_meta["session_id"] = session_id
+    return {
+        "final_text": final_text,
+        "messages": messages,
+        "tool_calls": tool_calls,
+        "result_meta": result_meta,
+        "events": events,
+        "stderr": None,
+        "error": None,
+    }
+
+
 def find_claude_sdk_python(container: str) -> str | None:
     candidates = ("/usr/bin/python3", "python3", "/opt/attackenv/bin/python3")
     probe = "import claude_agent_sdk"
@@ -535,6 +697,16 @@ def find_claude_sdk_python(container: str) -> str | None:
         proc = docker_exec(container, [candidate, "-c", probe], user="root", timeout=30)
         if proc.returncode == 0:
             return candidate
+    return None
+
+
+def missing_claude_cli_reason(container: str) -> str | None:
+    proc = docker_exec(container, ["bash", "-lc", "command -v claude"], user="root", timeout=30)
+    if proc.returncode != 0:
+        return (
+            "Claude Code CLI is not installed in the agent container. Use an "
+            "image with Claude Code installed."
+        )
     return None
 
 
@@ -963,6 +1135,7 @@ def build_trajectory(
             "backend": backend,
             "model": model,
             "prompt_field": prompt_field,
+            "claude_runner": agent_result.get("runner") if backend == "claude" else None,
             "agent_user": "root",
             "container": env_info.get("container"),
             "workdir": env_info.get("workdir"),
@@ -1040,6 +1213,7 @@ def run_agent_for_item(
                 anthropic_base_url=args.anthropic_base_url,
                 anthropic_env_key=args.anthropic_env_key,
                 allowed_tools=parse_csv_arg(getattr(args, "allowed_tools", None)),
+                claude_runner=getattr(args, "claude_runner", "sdk"),
             )
             verification = verify_gold(item, agent_result)
 
@@ -1076,6 +1250,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--max-turns", type=int, default=30)
     parser.add_argument("--allowed-tools", help="Comma-separated Claude Code tools/rules, e.g. Bash,Write,Read.")
+    parser.add_argument("--claude-runner", choices=("sdk", "cli"), default="sdk")
     parser.add_argument("--bypass", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--codex-write-config", action="store_true")
