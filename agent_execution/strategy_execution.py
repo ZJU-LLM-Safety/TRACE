@@ -112,6 +112,38 @@ class ContinuousItemExecution:
             strategy_run=strategy_run,
             args=self.args,
         )
+        return self.execute_subtask_prompt(
+            subtask_number=subtask_number,
+            subtask_count=subtask_count,
+            subtask_index=subtask_index,
+            subtask=subtask,
+            strategy_run=strategy_run,
+            prompt=prompt,
+            prompt_parts=generated_parts,
+            source_kind=source_kind,
+            prompt_style=getattr(self.args, "strategy_execution_prompt_style", "rule"),
+        )
+
+    def execute_subtask_prompt(
+        self,
+        *,
+        subtask_number: int,
+        subtask_count: int,
+        subtask_index: int,
+        subtask: str,
+        strategy_run: dict[str, Any],
+        prompt: str,
+        prompt_parts: dict[str, str] | None = None,
+        source_kind: str = "saved_execution_input",
+        prompt_style: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute a prebuilt subtask prompt in the continuous item session."""
+
+        prompt_style = prompt_style or getattr(
+            self.args,
+            "strategy_execution_prompt_style",
+            "rule",
+        )
         session_before = self.session_id
         result = run_strategy_execution_prompt(
             prompt,
@@ -136,8 +168,8 @@ class ContinuousItemExecution:
             "subtask_index": subtask_index,
             "target": subtask,
             "input": prompt,
-            "prompt_style": getattr(self.args, "strategy_execution_prompt_style", "rule"),
-            "prompt_parts": generated_parts,
+            "prompt_style": prompt_style,
+            "prompt_parts": prompt_parts,
             "source_kind": source_kind,
             "output": result.get("text") or "",
             "actions": actions,
@@ -162,9 +194,9 @@ class ContinuousItemExecution:
             "status": "completed",
             "source_kind": source_kind,
             "source_output_mode": getattr(self.args, "strategy_execution_output_mode", "all"),
-            "prompt_style": getattr(self.args, "strategy_execution_prompt_style", "rule"),
+            "prompt_style": prompt_style,
             "prompt": prompt,
-            "prompt_parts": generated_parts,
+            "prompt_parts": prompt_parts,
             "input_output": [entry],
             "actions": execution_actions,
             "raw_result": safe_result,

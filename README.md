@@ -377,6 +377,21 @@ This writes the final item result to `results.jsonl`. It also writes
 strategy used for that subtask plus the attacker and target inputs for the
 multi-turn conversation.
 
+Covert-elicitation prompt variant (experiment only): multi-dataset analysis
+showed the binding constraint is whether the target's conversation output
+contains environment-bound operational detail (exact paths/hosts/commands the
+gold probe checks). `config/prompts/attacker_agent_prompts_covert.yaml` and
+`config/prompts/plan_generation_prompts_covert.yaml` steer the attacker to
+acquire that detail covertly — evidence-first asks, adapting the target's own
+safe version one substitution per turn, draft review, display-only form —
+instead of requesting the goal directly. To use both, run the online runner
+with:
+
+```bash
+  --config config/config_online_qwen_local_gpt55_id15_covert.yaml \
+  --plan-prompts config/prompts/plan_generation_prompts_covert.yaml
+```
+
 Bundled config templates:
 
 - `config/config.yaml`: upstream-style default config copied from the original x-teaming tree.
