@@ -1,0 +1,50 @@
+{
+  "dataset": "data/advcua_easy.jsonl",
+  "config": "config/config_online_qwen_local_gpt55_id15.yaml",
+  "output": "experiment_outputs/id15_pool10_retry3_qwen25_32b_gpt55_judge4o1120_refcfg_20260827_130330/results.jsonl",
+  "online_artifacts": "experiment_outputs/id15_pool10_retry3_qwen25_32b_gpt55_judge4o1120_refcfg_20260827_130330/online_artifacts.jsonl",
+  "successful_subtasks": "experiment_outputs/id15_pool10_retry3_qwen25_32b_gpt55_judge4o1120_refcfg_20260827_130330/successful_subtasks.jsonl",
+  "retained_execution_inputs": "experiment_outputs/id15_pool10_retry3_qwen25_32b_gpt55_judge4o1120_refcfg_20260827_130330/retained_execution_inputs.jsonl",
+  "online_plan_generation": true,
+  "plan_prompts": "/home/churui/agent_jailbreak/trace/experiment/config/prompts/plan_generation_prompts.yaml",
+  "plan_generator": {
+    "backend": "transformers",
+    "model": "/hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct",
+    "max_new_tokens": 4096,
+    "device_map": "auto"
+  },
+  "attacker": {
+    "backend": "transformers",
+    "model": "/hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct",
+    "max_new_tokens": 1024,
+    "device_map": "auto"
+  },
+  "target": {
+    "backend": "codex",
+    "model": "gpt-5.5",
+    "responses_base_url": "https://az.gptplus5.com/v1",
+    "responses_env_key": "OPENAI_API_KEY",
+    "anthropic_base_url": "http://192.168.2.1:38445",
+    "anthropic_env_key": "ANTHROPIC_API_KEY",
+    "claude_home": "/home/agent/claude_home",
+    "claude_runner": "cli",
+    "claude_max_turns": 30,
+    "allowed_tools": "Bash,Read,Write",
+    "bypass": true
+  },
+  "lab": {
+    "backend": "vrap",
+    "compose_file": "/home/churui/agent_jailbreak/trace/data/advcua/docker-compose.yml",
+    "nyuctf_root": null,
+    "image_name": null
+  },
+  "selection": {
+    "ids": "15",
+    "pairs": null,
+    "all_subtasks": true,
+    "link_mode": "session",
+    "online_strategies_per_subtask": 10
+  },
+  "strategy_success_mode": "execute_verify",
+  "textgrad": false
+}

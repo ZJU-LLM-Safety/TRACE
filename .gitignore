@@ -1,6 +1,5 @@
 configs/
 external/
-experiment/
 .vscode/
 .codex-manual-cache/
 .codex/
@@ -21,4 +20,5 @@ agent_execution_outputs/
 **/check.py
 data/nyuctf/question.json
 data/nyuctf/update_target_boxes.py
-data/nyuctf/nyuctf_test_dataset_network_old.json
+data/nyuctf/*_old.json
+datasets/

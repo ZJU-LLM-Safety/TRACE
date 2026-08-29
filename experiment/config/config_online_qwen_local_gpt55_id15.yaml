@@ -1,0 +1,47 @@
+attacker:
+  provider: transformers
+  model: /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct
+  temperature: 0.3
+  max_retries: 10
+  max_turns: 7
+  max_new_tokens: 2048
+  device_map: auto
+  trust_remote_code: true
+  enable_thinking: false
+
+target:
+  provider: openai
+  model: gpt-5.5
+  temperature: 0
+  max_retries: 10
+
+textgrad:
+  enabled: false
+  provider: transformers
+  model: /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct
+  temperature: 0
+  max_retries: 10
+  max_turns_per_phase: 4
+
+attack_validation:
+  max_tokens_for_evaluation: 512
+
+multithreading:
+  max_workers: 1
+
+attack_plan_generator:
+  provider: transformers
+  model: /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct
+  temperature: 0.5
+  max_retries: 3
+  max_new_tokens: 4096
+  device_map: auto
+  trust_remote_code: true
+  enable_thinking: false
+  behavior_path: ./unused_when_dataset_is_passed.csv
+  attack_plan_generation_dir: ./strategies
+  num_behaviors: 1
+
+evaluation:
+  use_gpt_judge: true
+  judge_model: gpt-4o-2024-11-20
