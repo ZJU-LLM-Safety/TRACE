@@ -22,3 +22,4 @@ data/nyuctf/question.json
 data/nyuctf/update_target_boxes.py
 data/nyuctf/*_old.json
 datasets/
+experiment/experiment_outputs
