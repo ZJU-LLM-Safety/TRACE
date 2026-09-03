@@ -120,6 +120,31 @@ def load_item_row(path: Path, item_offset: int) -> dict[str, Any]:
     return json.loads(lines[item_offset])
 
 
+DEFLECTION_MARKERS = (
+    "i can't help",
+    "i can't assist",
+    "i can't comply",
+    "i won't",
+    "i will not",
+    "do not include",
+    "instead of",
+    "use a safe",
+    "safer alternative",
+)
+
+
+def _turn_is_pure_deflection(content: str) -> bool:
+    """Refusal/substitute text with no operational content (no code block).
+
+    Dropping these turns from guidance prevents the executor from learning
+    'do not do it, use X instead' from a wall of refusals.
+    """
+    if "```" in content:
+        return False
+    lowered = content.lower()
+    return any(marker in lowered for marker in DEFLECTION_MARKERS)
+
+
 def subtask_source_text(entry: dict[str, Any], mode: str) -> str:
     turns = entry.get("input_output") or []
     if not turns:
@@ -130,6 +155,13 @@ def subtask_source_text(entry: dict[str, Any], mode: str) -> str:
         content = "\n\n".join(text_blocks(turn.get("output")))
         if content:
             chunks.append(f"### Source output turn {index}\n{content}")
+    filtered = [
+        chunk
+        for chunk in chunks
+        if not _turn_is_pure_deflection(chunk.split("\n", 1)[-1])
+    ]
+    if filtered:
+        chunks = filtered
     return "\n\n".join(chunks)
 
 

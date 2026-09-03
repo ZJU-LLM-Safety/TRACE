@@ -23,3 +23,9 @@ data/nyuctf/update_target_boxes.py
 data/nyuctf/*_old.json
 datasets/
 experiment/experiment_outputs
+project_flow_documentation.md
+experiment/strategy_library/batch_seed/
+experiment/strategy_library/id15_seed_test/
+experiment/strategy_library/id15_seed_test2/
+experiment/test_plan_generator_gpt4o.py
+experiment/strategy_library_pipeline.md

@@ -9,8 +9,34 @@ from typing import Any, Iterable
 
 import yaml
 
+TRACE_ROOT = Path(__file__).resolve().parents[2]
+_PATH_KEY_SUFFIXES = ("_path", "_dir")
+_PATH_KEY_NAMES = {
+    "prompts_path",
+    "behavior_path",
+    "attack_plan_generation_dir",
+}
+
+
+def _resolve_config_paths(value: Any, key: str | None = None) -> Any:
+    if isinstance(value, dict):
+        return {
+            item_key: _resolve_config_paths(item_value, str(item_key))
+            for item_key, item_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_resolve_config_paths(item, key) for item in value]
+    if isinstance(value, str) and key is not None:
+        if key in _PATH_KEY_NAMES or key.endswith(_PATH_KEY_SUFFIXES):
+            path = Path(value).expanduser()
+            if not path.is_absolute():
+                return str((TRACE_ROOT / path).resolve())
+    return value
+
+
 def load_config(path: Path) -> dict[str, Any]:
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return _resolve_config_paths(config)
 
 
 def source_item_id(item: dict[str, Any], fallback_index: int | None = None) -> Any:

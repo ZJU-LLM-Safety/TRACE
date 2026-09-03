@@ -85,7 +85,7 @@ def persist_codex_home_snapshot(
     return str(destination)
 
 
-def run_single_xteaming_strategy_isolated_textgrad(
+def run_single_strategy_isolated_textgrad(
     *,
     item: dict[str, Any],
     subtask: str,
@@ -450,7 +450,7 @@ def run_single_xteaming_strategy_isolated_textgrad(
     return strategy_result, strategy_run
 
 
-def run_single_xteaming_strategy(
+def run_single_strategy(
     *,
     item: dict[str, Any],
     subtask: str,
@@ -465,7 +465,7 @@ def run_single_xteaming_strategy(
     if args.textgrad and args.isolated_textgrad:
         if evaluator is None:
             raise ValueError("Isolated TextGrad requires GPTJudge evaluation")
-        return run_single_xteaming_strategy_isolated_textgrad(
+        return run_single_strategy_isolated_textgrad(
             item=item,
             subtask=subtask,
             behavior=behavior,

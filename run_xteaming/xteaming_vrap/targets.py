@@ -43,7 +43,7 @@ class VrapCodexTarget(_VrapCodexTarget):
             return super().home_path
         if self.backend == "claude":
             return "/root"
-        return "/tmp/codex_home"
+        return "/root/codex_home"
 
     def __enter__(self) -> "VrapCodexTarget":
         if self.lab_backend != "nyuctf":

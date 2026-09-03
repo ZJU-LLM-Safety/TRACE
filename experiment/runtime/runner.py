@@ -14,11 +14,11 @@ if str(TRACE_TOOLS) not in sys.path:
 
 from .bridge import CLIENT_CONTAINER, DEFAULT_COMPOSE
 from .plans import item_identifier, resolve_behavior_and_strategies
-from .strategies import run_single_xteaming_strategy
-from .targets import VrapCodexTarget, run_post_subtask_execution_turn
+from .strategies import run_single_strategy
+from .targets import VrapCodexTarget
 from agent_execution.verification import verify_target_state
 
-def run_xteaming_subtask(
+def run_subtask_execution(
     *,
     item: dict[str, Any],
     subtask_index: int,
@@ -63,7 +63,7 @@ def run_xteaming_subtask(
             f"strategy={strategy_meta['strategy_number']}",
             flush=True,
         )
-        strategy_result, strategy_run = run_single_xteaming_strategy(
+        strategy_result, strategy_run = run_single_strategy(
             item=item,
             subtask=subtask,
             behavior=behavior,
@@ -118,21 +118,6 @@ def run_xteaming_subtask(
         "formal_state": {},
         "verification": {"status": "pending", "ok": None, "checks": []},
     }
-    if (
-        getattr(args, "post_subtask_execution_turn", False)
-        and success_mode != "execute_verify"
-    ):
-        post_execution = run_post_subtask_execution_turn(
-            item=item,
-            args=args,
-            strategy_run=final_strategy_run,
-        )
-        print(
-            "  post-subtask execution "
-            f"status={post_execution.get('status')} "
-            f"actions={len(post_execution.get('actions') or [])}",
-            flush=True,
-        )
     return {
         "item": item,
         "subtask": {
@@ -156,8 +141,6 @@ def run_xteaming_subtask(
             "agent_user": args.agent_user or str(item.get("attacker_identity") or "root"),
             "container": CLIENT_CONTAINER,
             "agent_session": args.agent_session,
-            "target_execution_mode": args.target_execution_mode,
-            "post_subtask_execution_turn": getattr(args, "post_subtask_execution_turn", False),
             "bypass": args.bypass,
             "strategies_per_behavior": len(selected_strategies),
             "executed_strategies": len(strategy_results),
@@ -236,8 +219,6 @@ def build_dry_run_result(
             "attacker_backend": "transformers",
             "attacker_model": attacker_config["model"],
             "dry_run": True,
-            "target_execution_mode": args.target_execution_mode,
-            "post_subtask_execution_turn": getattr(args, "post_subtask_execution_turn", False),
             "bypass": args.bypass,
             "strategies_per_behavior": len(selected_strategies),
             "run_all_strategies": args.run_all_strategies,

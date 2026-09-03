@@ -96,9 +96,6 @@ def write_run_metadata(
             "codex_write_config": args.codex_write_config,
             "claude_max_turns": getattr(args, "claude_max_turns", None),
             "allowed_tools": getattr(args, "allowed_tools", None),
-            "execution_mode": args.target_execution_mode,
-            "post_subtask_execution_turn": getattr(args, "post_subtask_execution_turn", False),
-            "post_subtask_execution_prompt": args.post_subtask_execution_prompt,
             "bypass": args.bypass,
         },
         "experiment_components": {

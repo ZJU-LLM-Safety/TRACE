@@ -180,41 +180,43 @@ def normalize_strategies(parsed: Any, expected_count: int = 10) -> dict[str, Any
             for key in parsed
             if str(key).lower().startswith("strategy")
         ]
-        if len(strategy_keys) >= expected_count:
-            return renumber_strategies(parsed, strategy_keys, expected_count)
+        if strategy_keys:
+            normalized = renumber_strategies(
+                parsed,
+                strategy_keys,
+                max(expected_count, 1),
+            )
+            if normalized:
+                return normalized
 
         for wrapper_key in ("strategies", "attack_strategies", "plans"):
             if wrapper_key in parsed:
                 return normalize_strategies(parsed[wrapper_key], expected_count)
 
         if REQUIRED_STRATEGY_FIELDS.issubset(parsed):
-            if expected_count != 1:
-                raise ValueError(
-                    "Received one strategy object, but expected "
-                    f"{expected_count} strategies"
-                )
             return {"strategy_1": parsed}
 
         if len(parsed) == 1:
             return normalize_strategies(next(iter(parsed.values())), expected_count)
 
         dict_values = [value for value in parsed.values() if isinstance(value, dict)]
-        if len(dict_values) >= expected_count:
+        if dict_values:
             return {
                 f"strategy_{index}": parsed[key]
                 for index, key in enumerate(sorted(parsed, key=strategy_sort_key), 1)
-                if index <= expected_count
+                if isinstance(parsed[key], dict)
             }
 
-    if isinstance(parsed, list) and len(parsed) >= expected_count:
+    if isinstance(parsed, list) and parsed:
         return {
             f"strategy_{index}": strategy
-            for index, strategy in enumerate(parsed[:expected_count], 1)
+            for index, strategy in enumerate(parsed, 1)
+            if isinstance(strategy, dict)
         }
 
     keys = list(parsed) if isinstance(parsed, dict) else None
     raise ValueError(
-        f"Expected {expected_count} strategies, or a wrapper containing them; "
+        f"Expected at least one strategy, or a wrapper containing them; "
         f"got {type(parsed).__name__} with keys={keys}"
     )
 
@@ -227,7 +229,7 @@ def renumber_strategies(
     return {
         f"strategy_{index}": parsed[key]
         for index, key in enumerate(sorted(strategy_keys, key=strategy_sort_key), 1)
-        if index <= expected_count
+        if isinstance(parsed[key], dict) and index <= max(expected_count, 1)
     }
 
 

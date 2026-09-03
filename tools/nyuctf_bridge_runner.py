@@ -388,7 +388,7 @@ def run_codex_in_container(
         }
 
     env = collect_env(CODEX_ENV_KEYS)
-    env.setdefault("CODEX_HOME", "/tmp/codex_home")
+    env.setdefault("CODEX_HOME", "/root/codex_home")
     docker_exec(container, ["mkdir", "-p", env["CODEX_HOME"]], user="root", timeout=30)
 
     if write_config:

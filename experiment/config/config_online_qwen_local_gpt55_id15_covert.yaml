@@ -3,12 +3,12 @@ attacker:
   model: /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct
   temperature: 0.3
   max_retries: 10
-  max_turns: 7
+  max_turns: 5
   max_new_tokens: 2048
   device_map: auto
   trust_remote_code: true
   enable_thinking: false
-  prompts_path: config/prompts/attacker_agent_prompts_covert.yaml
+  prompts_path: experiment/config/prompts/attacker_agent_prompts_covert.yaml
 
 target:
   provider: openai

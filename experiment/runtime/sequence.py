@@ -1,4 +1,4 @@
-"""X-teaming item-level execution across all AdvCUA subprompts."""
+"""Item-level strategy execution across all selected subprompts."""
 from __future__ import annotations
 
 import argparse
@@ -11,7 +11,7 @@ from typing import Any
 
 from .bridge import CLIENT_CONTAINER
 from .plans import resolve_behavior_and_strategies
-from .runner import run_xteaming_subtask
+from .runner import run_subtask_execution
 from .utils import redact_secrets
 
 
@@ -29,8 +29,8 @@ from agent_execution.sequence import (  # noqa: E402
 from agent_execution.strategy_execution import ContinuousItemExecution
 
 
-class XTeamingSubtaskRunner(MultiSubtaskRunner):
-    """Connect the generic multi-subtask runner to x-teaming subtask execution."""
+class StrategySubtaskRunner(MultiSubtaskRunner):
+    """Connect the generic multi-subtask runner to subtask strategy execution."""
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class XTeamingSubtaskRunner(MultiSubtaskRunner):
     ) -> dict[str, Any]:
         sub_attacker_config = dict(self.attacker_config)
         sub_attacker_config.update(sub_config)
-        return run_xteaming_subtask(
+        return run_subtask_execution(
             item=self.item,
             subtask_index=subtask_index,
             subtask=subtask,
@@ -85,10 +85,7 @@ class XTeamingSubtaskRunner(MultiSubtaskRunner):
             "claude_runner": getattr(self.args, "claude_runner", None),
             "container": CLIENT_CONTAINER,
             "lab_backend": getattr(self.args, "lab_backend", "vrap"),
-            "link_mode": self.args.link_mode,
             "subprompt_count": len(self.subprompts),
-            "target_execution_mode": self.args.target_execution_mode,
-            "post_subtask_execution_turn": getattr(self.args, "post_subtask_execution_turn", False),
             "bypass": self.args.bypass,
             "strategies_per_behavior": self.attacker_config.get("strategies_per_behavior"),
             "gpt_judge": self.args.use_gpt_judge,
@@ -98,7 +95,7 @@ class XTeamingSubtaskRunner(MultiSubtaskRunner):
         }
 
 
-class XTeamingItemExecuteVerifyRunner:
+class StrategyItemExecuteVerifyRunner:
     """Run random item-level strategy combinations with continuous execution."""
 
     def __init__(
@@ -199,9 +196,7 @@ class XTeamingItemExecuteVerifyRunner:
         sub_args.run_all_strategies = False
         sub_args.strategy_success_mode = "judge"
         sub_args.verify = False
-        sub_args.post_subtask_execution_turn = False
-        sub_args.target_execution_mode = "chat"
-        return run_xteaming_subtask(
+        return run_subtask_execution(
             item=self.item,
             subtask_index=subtask_index,
             subtask=subtask,
@@ -224,7 +219,6 @@ class XTeamingItemExecuteVerifyRunner:
             "claude_runner": getattr(self.args, "claude_runner", None),
             "container": CLIENT_CONTAINER,
             "lab_backend": getattr(self.args, "lab_backend", "vrap"),
-            "link_mode": self.args.link_mode,
             "subprompt_count": len(self.subprompts),
             "strategy_success_mode": "execute_verify",
             "item_attempts": self._max_attempts(),
@@ -400,7 +394,7 @@ def run_all_subprompts_for_item(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     if getattr(args, "strategy_success_mode", "judge") == "execute_verify":
-        return XTeamingItemExecuteVerifyRunner(
+        return StrategyItemExecuteVerifyRunner(
             item=item,
             attacker_config=attacker_config,
             tg_config=tg_config,
@@ -408,7 +402,7 @@ def run_all_subprompts_for_item(
             plans_by_behavior_id=plans_by_behavior_id,
             args=args,
         ).run()
-    return XTeamingSubtaskRunner(
+    return StrategySubtaskRunner(
         item=item,
         attacker_config=attacker_config,
         tg_config=tg_config,

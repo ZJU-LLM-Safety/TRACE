@@ -136,7 +136,7 @@ def evidence_from_io_entry(entry: dict) -> dict:
     }
 
 
-def load_xteaming_conversations(path: Path) -> dict:
+def load_conversations(path: Path) -> dict:
     """Map item_id -> {subtask_index: {target, strategy, conversation}}."""
     conversations = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -248,7 +248,7 @@ def mine_baseline_dataset(
     timeout: float,
     debug_path: Path | None = None,
 ) -> list[dict]:
-    conversations = load_xteaming_conversations(sources["conversations"])
+    conversations = load_conversations(sources["conversations"])
     records = []
     for item_id in sources["items"]:
         per_subtask = conversations.get(item_id)

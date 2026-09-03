@@ -273,7 +273,7 @@ def build_strategy_execution_prompt(
     if not source_text:
         raise ValueError(f"subtask {subtask_index} has no source text for execution")
 
-    prompt_style = getattr(args, "strategy_execution_prompt_style", "rule")
+    prompt_style = getattr(args, "strategy_execution_prompt_style", "auto")
     generated_parts = None
     if prompt_style == "auto":
         prompt, generated_parts = build_generated_execution_prompt(
