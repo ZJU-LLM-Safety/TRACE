@@ -29,3 +29,4 @@ experiment/strategy_library/id15_seed_test/
 experiment/strategy_library/id15_seed_test2/
 experiment/test_plan_generator_gpt4o.py
 experiment/strategy_library_pipeline.md
+experiment/strategy_library/strategy_library.json

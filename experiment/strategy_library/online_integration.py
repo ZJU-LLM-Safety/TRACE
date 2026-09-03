@@ -59,7 +59,14 @@ def load_strategy_library_runtime(
         top_failure_lessons=top_failure_lessons,
     )
     if not library.entries:
-        raise ValueError(f"strategy library {library_path} has no entries")
+        # Cold start: an empty or missing library is allowed. Every subtask
+        # falls back to full generation and the library grows through
+        # re-injection.
+        print(
+            f"WARNING: strategy library {library_path} is empty or missing; "
+            "starting cold (all strategies generated fresh)",
+            flush=True,
+        )
     retriever = StrategyRetriever(
         library,
         model=model,
