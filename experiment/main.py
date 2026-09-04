@@ -96,39 +96,49 @@ class RunStats:
     def __init__(self):
         self.conversation_time_s = 0.0
         self.execution_time_s = 0.0
-        self.target_queries = 0
+        self.conversation_queries = 0
+        self.execution_queries = 0
         self.per_item: dict[str, dict] = {}
         self._item_id: str | None = None
         self._baseline = (0.0, 0.0, 0)
 
     def start_item(self, item_id: Any) -> None:
         self._item_id = str(item_id)
-        self._baseline = (self.conversation_time_s, self.execution_time_s, self.target_queries)
+        self._baseline = (
+            self.conversation_time_s,
+            self.execution_time_s,
+            self.conversation_queries,
+            self.execution_queries,
+        )
 
     def end_item(self) -> None:
         if self._item_id is None:
             return
-        c0, e0, q0 = self._baseline
+        c0, e0, cq0, eq0 = self._baseline
         self.per_item[self._item_id] = {
             "conversation_time_s": round(self.conversation_time_s - c0, 2),
             "execution_time_s": round(self.execution_time_s - e0, 2),
-            "target_queries": self.target_queries - q0,
+            "conversation_queries": self.conversation_queries - cq0,
+            "execution_queries": self.execution_queries - eq0,
+            "target_queries": (self.conversation_queries - cq0) + (self.execution_queries - eq0),
         }
         self._item_id = None
 
     def add_conversation(self, seconds: float, target_queries: int) -> None:
         self.conversation_time_s += seconds
-        self.target_queries += target_queries
+        self.conversation_queries += target_queries
 
     def add_execution(self, seconds: float, target_queries: int) -> None:
         self.execution_time_s += seconds
-        self.target_queries += target_queries
+        self.execution_queries += target_queries
 
     def snapshot(self) -> dict:
         return {
             "conversation_time_s": round(self.conversation_time_s, 2),
             "execution_time_s": round(self.execution_time_s, 2),
-            "target_queries": self.target_queries,
+            "conversation_queries": self.conversation_queries,
+            "execution_queries": self.execution_queries,
+            "target_queries": self.conversation_queries + self.execution_queries,
             "per_item": self.per_item,
         }
 
@@ -2090,6 +2100,8 @@ def main() -> int:
                 f"actions={len(result.get('actions') or [])} "
                 f"conv={item_stats.get('conversation_time_s', 0)}s "
                 f"exec={item_stats.get('execution_time_s', 0)}s "
+                f"conv_q={item_stats.get('conversation_queries', 0)} "
+                f"exec_q={item_stats.get('execution_queries', 0)} "
                 f"target_queries={item_stats.get('target_queries', 0)}",
                 flush=True,
             )
@@ -2102,6 +2114,8 @@ def main() -> int:
         f"Wrote {len(items)} result(s) to {output_path} | "
         f"total conv={snapshot['conversation_time_s']}s "
         f"exec={snapshot['execution_time_s']}s "
+        f"conv_q={snapshot['conversation_queries']} "
+        f"exec_q={snapshot['execution_queries']} "
         f"target_queries={snapshot['target_queries']}",
         flush=True,
     )
