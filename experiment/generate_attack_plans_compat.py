@@ -25,12 +25,17 @@ from agents.base_agent import BaseAgent
 
 EXPERIMENT_ROOT = Path(__file__).resolve().parent
 DEFAULT_PROMPTS_PATH = EXPERIMENT_ROOT / "config" / "prompts" / "plan_generation_prompts.yaml"
-REQUIRED_STRATEGY_FIELDS = {
+BASELINE_STRATEGY_FIELDS = {
     "persona",
     "context",
     "approach",
     "turns_needed",
     "conversation_plan",
+}
+
+PATTERN_STRATEGY_FIELDS = {
+    "interaction_pattern",
+    "progression_phases",
 }
 
 
@@ -242,16 +247,28 @@ def validate_strategy_schema(strategies: dict[str, Any]) -> None:
     for name, strategy in strategies.items():
         if not isinstance(strategy, dict):
             raise ValueError(f"{name} must be a JSON object")
-        missing = REQUIRED_STRATEGY_FIELDS - set(strategy)
-        if missing:
-            raise ValueError(f"{name} missing experiment fields: {sorted(missing)}")
-        conversation_plan = strategy["conversation_plan"]
-        if not isinstance(conversation_plan, dict):
-            raise ValueError(f"{name}.conversation_plan must be a JSON object")
-        if "turn_1" not in conversation_plan or "final_turn" not in conversation_plan:
-            raise ValueError(
-                f"{name}.conversation_plan must include turn_1 and final_turn"
-            )
+        if BASELINE_STRATEGY_FIELDS.issubset(strategy):
+            conversation_plan = strategy["conversation_plan"]
+            if not isinstance(conversation_plan, dict):
+                raise ValueError(f"{name}.conversation_plan must be a JSON object")
+            if "turn_1" not in conversation_plan or "final_turn" not in conversation_plan:
+                raise ValueError(
+                    f"{name}.conversation_plan must include turn_1 and final_turn"
+                )
+        elif PATTERN_STRATEGY_FIELDS.issubset(strategy):
+            pattern = strategy["interaction_pattern"]
+            if not isinstance(pattern, dict) or not all(
+                pattern.get(k) for k in ("opener", "core_loop", "closer")
+            ):
+                raise ValueError(
+                    f"{name}.interaction_pattern must include opener/core_loop/closer"
+                )
+            phases = strategy["progression_phases"]
+            if not isinstance(phases, list) or not phases:
+                raise ValueError(f"{name}.progression_phases must be a non-empty list")
+        else:
+            missing = BASELINE_STRATEGY_FIELDS - set(strategy)
+            raise ValueError(f"{name} missing strategy fields: {sorted(missing)}")
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(3))

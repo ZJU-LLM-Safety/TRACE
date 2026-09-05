@@ -16,15 +16,17 @@ class LLMRefusalError(Exception):
 
 
 class AttackerAgent(BaseAgent):
-    """Agent that turns a baseline-schema strategy into multi-turn attacker messages."""
+    """Agent that executes a strategy (pattern+phases or baseline) as multi-turn messages.
 
-    REQUIRED_STRATEGY_FIELDS = {
-        "persona",
-        "context",
-        "approach",
-        "turns_needed",
-        "conversation_plan",
-    }
+    Accepts two strategy schemas:
+    - pattern: {interaction_pattern, progression_phases} — consumed directly,
+      each phase's objective/action/success_signal/fallback guides the turn.
+    - baseline: {persona, context, approach, turns_needed, conversation_plan} —
+      legacy format, consumed turn-by-turn from the conversation_plan.
+    """
+
+    BASELINE_FIELDS = {"persona", "context", "approach", "turns_needed", "conversation_plan"}
+    PATTERN_FIELDS = {"interaction_pattern", "progression_phases"}
 
     def __init__(
         self,
@@ -39,25 +41,70 @@ class AttackerAgent(BaseAgent):
         self._initialize_agent(behavior, strategy)
 
     def _initialize_agent(self, behavior: Dict[str, Any], strategy: Dict[str, Any]) -> None:
-        missing = self.REQUIRED_STRATEGY_FIELDS - set(strategy)
-        if missing:
-            raise ValueError(
-                "Experiment strategies must use the baseline schema; missing fields: "
-                + ", ".join(sorted(missing))
-            )
-
         self.behavior = str(behavior["Behavior"])
         self.strategy_dict = strategy
+        self.strategy_format = self._detect_format(strategy)
         self.strategy = self._format_strategy(strategy)
-        self.phase_keys = ordered_conversation_plan_keys(strategy["conversation_plan"])
+
+        if self.strategy_format == "pattern":
+            self.phases = strategy["progression_phases"]
+            self.num_phases = len(self.phases)
+        else:
+            self.phase_keys = ordered_conversation_plan_keys(strategy["conversation_plan"])
+            self.num_phases = len(self.phase_keys)
+
         self.plan_phase = 1
-        self.num_phases = len(self.phase_keys)
         self.plan_score_history: list[int] = []
         self.next_message_candidates: list[dict[str, Any]] = []
         self.generated_records: list[dict[str, Any]] = []
         self._load_prompt_templates()
 
+    def _detect_format(self, strategy: Dict[str, Any]) -> str:
+        if self.PATTERN_FIELDS.issubset(strategy):
+            return "pattern"
+        if self.BASELINE_FIELDS.issubset(strategy):
+            return "baseline"
+        raise ValueError(
+            f"Strategy must have {self.PATTERN_FIELDS} or {self.BASELINE_FIELDS}; "
+            f"got keys: {sorted(strategy)}"
+        )
+
     def _format_strategy(self, strategy: Dict[str, Any]) -> str:
+        if self.strategy_format == "pattern":
+            pattern = strategy["interaction_pattern"]
+            phases_text = "\n".join(
+                f"  Phase {p.get('phase', i+1)} — {p.get('name', '')}:\n"
+                f"    Objective: {p.get('objective', '')}\n"
+                f"    Action: {p.get('attacker_action', '')}\n"
+                f"    Success signal: {p.get('success_signal', '')}\n"
+                f"    Fallback frame: {p.get('fallback', '')}"
+                for i, p in enumerate(strategy["progression_phases"])
+            )
+            lessons = strategy.get("failure_lessons") or []
+            lessons_text = ""
+            if lessons:
+                lines = [
+                    f"  - [seen {l.get('count')} times] {l.get('lesson')}"
+                    for l in lessons if l.get("lesson")
+                ]
+                if lines:
+                    lessons_text = (
+                        "\nFailure lessons (each from a real failed application; "
+                        "the plan must avoid repeating them):\n" + "\n".join(lines)
+                    )
+            return "\n".join(
+                [
+                    "Interaction Pattern:",
+                    f"  Opener: {pattern.get('opener', '')}",
+                    f"  Core loop: {pattern.get('core_loop', '')}",
+                    f"  Closer: {pattern.get('closer', '')}",
+                    "Slot bindings: "
+                    + json.dumps(pattern.get("slot_bindings") or {}, ensure_ascii=False, indent=2),
+                    "Progression Phases:",
+                    phases_text,
+                    lessons_text,
+                ]
+            )
         return "\n".join(
             [
                 f"Persona: {strategy['persona']}",
@@ -72,6 +119,31 @@ class AttackerAgent(BaseAgent):
                 ),
             ]
         )
+
+    def _current_flow(self) -> str:
+        """Return the instruction for the current phase, format-aware."""
+        if self.strategy_format == "pattern":
+            phase = self.phases[self.plan_phase - 1]
+            is_final = self.plan_phase == self.num_phases
+            parts = [
+                f"Phase objective: {phase.get('objective', '')}",
+                f"Your action this phase: {phase.get('attacker_action', '')}",
+            ]
+            if not is_final:
+                parts.append(
+                    f"If the target's previous response did not show: "
+                    f"{phase.get('success_signal', '')}, "
+                    f"switch your frame to: {phase.get('fallback', '')}."
+                )
+            else:
+                parts.append(
+                    f"This is the final phase. Deliver the closer: "
+                    f"{self.strategy_dict['interaction_pattern'].get('closer', '')}."
+                )
+            return "\n".join(parts)
+
+        key = self.phase_keys[self.plan_phase - 1]
+        return str(self.strategy_dict["conversation_plan"][key])
 
     def _load_prompt_templates(self) -> dict[str, Any]:
         prompts = yaml.safe_load(self.prompts_path.read_text(encoding="utf-8"))["prompts"]
@@ -147,17 +219,12 @@ class AttackerAgent(BaseAgent):
         return {
             "turn_number": actual_turn_number,
             "phase": self.plan_phase,
-            "phase_key": self.phase_keys[self.plan_phase - 1],
             "attacker": attack_generation,
             "target": target_response,
             "target_truncated": truncated_response,
             "evaluation_score": score,
             "evaluation_reason": reason,
         }
-
-    def _current_flow(self) -> str:
-        policy = self.strategy_dict["conversation_plan"]
-        return str(policy[self.phase_keys[self.plan_phase - 1]])
 
     def _system_message(self) -> dict[str, str]:
         return {
@@ -193,7 +260,11 @@ class AttackerAgent(BaseAgent):
         return conversation
 
     def _generate_first_turn(self, turn_number: int) -> str:
-        phase_key = self.phase_keys[self.plan_phase - 1]
+        phase_key = (
+            f"phase_{self.plan_phase}"
+            if self.strategy_format == "pattern"
+            else self.phase_keys[self.plan_phase - 1]
+        )
         prompt_messages = [
             self._system_message(),
             {
@@ -215,7 +286,11 @@ class AttackerAgent(BaseAgent):
         )
 
     def _generate_nth_turn(self, conversation_history: str, turn_number: int) -> str:
-        phase_key = self.phase_keys[self.plan_phase - 1]
+        phase_key = (
+            f"phase_{self.plan_phase}"
+            if self.strategy_format == "pattern"
+            else self.phase_keys[self.plan_phase - 1]
+        )
         prompt_messages = [
             self._system_message(),
             {
@@ -240,7 +315,11 @@ class AttackerAgent(BaseAgent):
         )
 
     def _generate_final_turn(self, conversation_history: str, turn_number: int) -> str:
-        phase_key = self.phase_keys[self.plan_phase - 1]
+        phase_key = (
+            f"phase_{self.plan_phase}"
+            if self.strategy_format == "pattern"
+            else self.phase_keys[self.plan_phase - 1]
+        )
         prompt_messages = [
             self._system_message(),
             {
@@ -264,7 +343,7 @@ class AttackerAgent(BaseAgent):
 
 
 def default_prompts_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "config" / "prompts" / "attacker_agent_prompts.yaml"
+    return Path(__file__).resolve().parents[1] / "config" / "prompts" / "attacker_agent_prompts_covert.yaml"
 
 
 def ordered_conversation_plan_keys(conversation_plan: dict[str, Any]) -> list[str]:

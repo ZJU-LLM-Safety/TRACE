@@ -135,17 +135,7 @@ def compose_library_plans(
             *[(e, "proven-fit") for e in proven_picks],
             *([(probation_pick, "probation")] if probation_pick is not None else []),
         ]:
-            strategy = instantiate_strategy(
-                entry=entry,
-                target=target,
-                key_elements=result.key_elements,
-                top_failure_lessons=handle.library.top_failure_lessons,
-                model=handle.retriever.model,
-                base_url=handle.retriever.base_url,
-                api_key=handle.retriever.api_key,
-                timeout=handle.retriever.timeout,
-            )
-            strategy["library_task_type"] = result.task_type
+            strategy = _entry_as_strategy(entry, result.task_type)
             early_strategies.append(strategy)
             early_meta.append(
                 {
@@ -170,17 +160,7 @@ def compose_library_plans(
         tail_strategies = []
         tail_meta = []
         for entry in tail_picks:
-            strategy = instantiate_strategy(
-                entry=entry,
-                target=target,
-                key_elements=result.key_elements,
-                top_failure_lessons=handle.library.top_failure_lessons,
-                model=handle.retriever.model,
-                base_url=handle.retriever.base_url,
-                api_key=handle.retriever.api_key,
-                timeout=handle.retriever.timeout,
-            )
-            strategy["library_task_type"] = result.task_type
+            strategy = _entry_as_strategy(entry, result.task_type)
             tail_strategies.append(strategy)
             reason = (
                 f"unproven-fit (task_type {result.task_type})"
@@ -210,6 +190,52 @@ def compose_library_plans(
             "notes": notes,
         }
     return composition
+
+
+def _entry_as_strategy(entry: dict, task_type: str | None) -> dict:
+    """Wrap a library entry as a consumable strategy dict (zero LLM calls).
+
+    The entry's interaction_pattern and progression_phases are passed through
+    verbatim; failure lessons are injected as a prompt-level reminder on the
+    strategy object so the attacker can honor them during generation.
+    """
+    lessons = sorted(
+        entry.get("experience_profile", {}).get("known_failure_modes") or [],
+        key=lambda mode: int(mode.get("count") or 0),
+        reverse=True,
+    )[:3]
+    return {
+        "interaction_pattern": entry.get("interaction_pattern") or {},
+        "progression_phases": entry.get("progression_phases") or [],
+        "failure_lessons": [
+            {"lesson": m.get("lesson"), "count": m.get("count")}
+            for m in lessons
+            if m.get("lesson")
+        ],
+        "library_entry_id": entry["entry_id"],
+        "library_entry_name": entry["name"],
+        "library_task_type": task_type,
+    }
+
+
+def stamp_task_type(pools, composition):
+    """Propagate the classified task_type onto generated strategies.
+
+    Library-sourced strategies already carry library_task_type from
+    _entry_as_strategy; generated ones get stamped here so reinjection
+    can read it without a fresh classification call.
+    """
+    for subtask_index, pool in pools.items():
+        comp = composition.get(subtask_index)
+        if comp is None:
+            continue
+        task_type = comp.get("task_type")
+        if not task_type:
+            continue
+        pool["task_type"] = task_type
+        for strategy in (pool.get("strategies") or {}).values():
+            if isinstance(strategy, dict) and not strategy.get("library_task_type"):
+                strategy["library_task_type"] = task_type
 
 
 def merge_library_into_pools(
@@ -493,32 +519,47 @@ def reinject_success(
     )
     if not verdict["kept"]:
         return {"added": False, "why": "filtered", "reason": verdict.get("reason")}
-    extracted = extract_record(
-        record,
-        model=handle.retriever.model,
-        base_url=handle.retriever.base_url,
-        api_key=handle.retriever.api_key,
-        timeout=handle.retriever.timeout,
-    )
-    task_type = (extracted.get("task_signature") or {}).get("task_type")
-    merged = merge_or_add_entry(handle=handle, extracted=extracted, task_type=task_type)
+    # The strategy object is already in pattern+phases format — use it
+    # directly as the library entry candidate (no LLM extraction call).
+    strategy = subtask_result.get("strategy") or {}
+    task_type = strategy.get("library_task_type")
+    if not task_type:
+        task_type = classify_task_type(
+            target=str((subtask_result.get("subtask") or {}).get("target") or ""),
+            handle=handle,
+        )
+    candidate = {
+        "interaction_pattern": strategy.get("interaction_pattern") or {},
+        "progression_phases": strategy.get("progression_phases") or [],
+        "task_type": task_type,
+    }
+    merged = merge_or_add_entry(handle=handle, candidate=candidate, task_type=task_type)
     return merged
+
+
+def classify_task_type(*, target: str, handle: StrategyLibraryRuntime) -> str | None:
+    """Classify a subtask target to obtain the task type for library bookkeeping."""
+    try:
+        result = handle.retriever.classify(target)
+        return result.get("task_type") or None
+    except Exception:
+        return None
 
 
 def merge_or_add_entry(
     *,
     handle: StrategyLibraryRuntime,
-    extracted: dict,
+    candidate: dict,
     task_type: str | None,
 ) -> dict:
-    """Add an extracted pattern, or merge into a structurally similar entry.
+    """Add a strategy as a library entry, or merge into a similar entry.
 
     A similarity check against existing entries keeps the library bounded:
     when the new pattern shares the interaction structure with an existing
     entry, its success is recorded on that entry instead of creating a
     near-duplicate.
     """
-    pattern = extracted.get("interaction_pattern") or {}
+    pattern = candidate.get("interaction_pattern") or {}
     existing_rows = [
         {
             "entry_id": entry["entry_id"],
@@ -567,10 +608,23 @@ def merge_or_add_entry(
             task_type=task_type,
         )
         return {"added": False, "why": "merged_similar", "entry_id": similar_to}
-    entry = entry_from_extracted(
-        extracted,
-        entry_id=_next_entry_id(handle.library),
-    )
+    entry_name = pattern.get("name") or f"generated-pattern-{_next_entry_id(handle.library)}"
+    entry = {
+        "entry_id": _next_entry_id(handle.library),
+        "name": entry_name,
+        "interaction_pattern": pattern,
+        "progression_phases": candidate.get("progression_phases") or [],
+        "experience_profile": {
+            "fits_task_types": [task_type] if task_type else [],
+            "avoid_task_types": [],
+            "proven_task_types": [task_type] if task_type else [],
+            "known_failure_modes": [],
+            "failure_task_type": {},
+            "success_task_type": {},
+        },
+        "needs_revision": False,
+        "probation": False,
+    }
     if any(existing["name"] == entry["name"] for existing in handle.library.entries):
         return {"added": False, "why": "duplicate_name", "name": entry["name"]}
     handle.library.add_entry(entry)

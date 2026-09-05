@@ -295,6 +295,7 @@ def generate_item_strategy_pools(
             "strategies": strategies,
             "generation_messages": messages,
             "generated_batch": True,
+            "task_type": counts_by_subtask.get(f"__task_type__") if isinstance(counts_by_subtask, dict) else None,
         }
         append_online_artifact(
             args,
@@ -1133,7 +1134,7 @@ def run_online_item(
     }
     library_composition = None
     if getattr(args, "strategy_library_handle", None):
-        from online_integration import compose_library_plans, merge_library_into_pools
+        from online_integration import compose_library_plans, merge_library_into_pools, stamp_task_type
 
         library_composition = compose_library_plans(
             handle=args.strategy_library_handle,
@@ -1161,6 +1162,7 @@ def run_online_item(
             pools=strategy_pools,
             composition=library_composition,
         )
+        stamp_task_type(strategy_pools, library_composition)
         run_metadata["strategy_library"] = {
             "path": str(args.strategy_library),
             "selection_order": args.library_selection_order,

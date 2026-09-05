@@ -529,7 +529,7 @@ def run_single_strategy(
                     turn_data = {
                         "turn_number": turn,
                         "phase": attacker.plan_phase,
-                        "phase_key": attacker.phase_keys[attacker.plan_phase - 1],
+                        "phase_key": f"phase_{attacker.plan_phase}",
                         "attacker": attack_generation,
                         "target": target_response,
                         "target_truncated": truncated_response,
@@ -546,7 +546,7 @@ def run_single_strategy(
                 turn_data = {
                     "turn_number": turn,
                     "phase": attacker.plan_phase,
-                    "phase_key": attacker.phase_keys[attacker.plan_phase - 1],
+                    "phase_key": f"phase_{attacker.plan_phase}",
                     "attacker": getattr(getattr(attacker, "attack", None), "value", ""),
                     "target": "",
                     "target_truncated": "",
