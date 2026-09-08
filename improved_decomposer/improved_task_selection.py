@@ -8,7 +8,10 @@ import threading
 
 from improved_subtask_score import get_openai_client, record_completion_tokens, template_safety_score
 from improved_task_json import parse_json_list_or_object
-from improved_task_prompts import build_granularity_judge_prompt
+from improved_task_prompts import (
+    build_execution_difficulty_judge_prompt,
+    build_granularity_judge_prompt,
+)
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -23,11 +26,32 @@ def _normalize_granularity_judgment(result: Any) -> dict[str, Any]:
         raise ValueError("granularity_score must be numeric")
     raw_score = float(raw_score)
     result["raw_granularity_score"] = round(raw_score, 3)
-    normalized = raw_score / 5.0 if raw_score > 1.0 else raw_score
+    # Judge contract is 1-5, so >= 1.0 is a raw score needing /5; sub-1 values
+    # are treated as already normalized. (raw 1 must become 0.2, not 1.0.)
+    normalized = raw_score / 5.0 if raw_score >= 1.0 else raw_score
     result["granularity_score"] = round(_clamp(normalized), 3)
     result.setdefault("judgment", "")
     result.setdefault("oversplit_steps", [])
     result.setdefault("overmerged_steps", [])
+    result.setdefault("reason", "")
+    result["source"] = "llm"
+    return result
+
+
+def _normalize_difficulty_judgment(result: Any) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        raise ValueError("difficulty judge output is not a JSON object")
+    raw_score = result.get("difficulty_score")
+    if isinstance(raw_score, bool) or raw_score is None:
+        raise ValueError("difficulty_score must be numeric")
+    raw_score = float(raw_score)
+    result["raw_difficulty_score"] = round(raw_score, 3)
+    # Judge contract is 1-5, so >= 1.0 is a raw score needing /5; sub-1 values
+    # are treated as already normalized. (raw 1 must become 0.2, not 1.0.)
+    normalized = raw_score / 5.0 if raw_score >= 1.0 else raw_score
+    result["difficulty_score"] = round(_clamp(normalized), 3)
+    result.setdefault("judgment", "")
+    result.setdefault("hardest_steps", [])
     result.setdefault("reason", "")
     result["source"] = "llm"
     return result
@@ -56,6 +80,31 @@ def _call_granularity_judge(
     record_completion_tokens(usage_sink, completion, lock=usage_sink_lock)
     content = completion.choices[0].message.content or "{}"
     return _normalize_granularity_judgment(parse_json_list_or_object(content))
+
+
+def _call_difficulty_judge(
+    task: str,
+    sub_prompts: list[str],
+    *,
+    client,
+    model: str,
+    usage_sink: dict[str, int] | None = None,
+    usage_sink_lock=None,
+) -> dict[str, Any]:
+    completion = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": build_execution_difficulty_judge_prompt(task, sub_prompts),
+            }
+        ],
+        temperature=0,
+        top_p=0.01,
+    )
+    record_completion_tokens(usage_sink, completion, lock=usage_sink_lock)
+    content = completion.choices[0].message.content or "{}"
+    return _normalize_difficulty_judgment(parse_json_list_or_object(content))
 
 
 def _retry_call_granularity_judge(
@@ -87,6 +136,35 @@ def _retry_call_granularity_judge(
     raise RuntimeError("granularity judge failed without an exception")
 
 
+def _retry_call_difficulty_judge(
+    task: str,
+    sub_prompts: list[str],
+    *,
+    client,
+    model: str,
+    retries: int = 10,
+    usage_sink: dict[str, int] | None = None,
+    usage_sink_lock=None,
+) -> dict[str, Any]:
+    last_exc: Exception | None = None
+    for _ in range(max(1, retries)):
+        try:
+            return _call_difficulty_judge(
+                task,
+                sub_prompts,
+                client=client,
+                model=model,
+                usage_sink=usage_sink,
+                usage_sink_lock=usage_sink_lock,
+            )
+        except Exception as exc:
+            last_exc = exc
+            time.sleep(2)  # Wait before retrying
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("difficulty judge failed without an exception")
+
+
 def llm_granularity_score(
     task: str | None,
     sub_prompts: list[str],
@@ -100,6 +178,27 @@ def llm_granularity_score(
 ) -> dict[str, Any]:
     """Score granularity positively; use heuristics only when judging is unavailable."""
     return _retry_call_granularity_judge(
+        task,
+        sub_prompts,
+        client=client,
+        model=model,
+        retries=10,
+        usage_sink=usage_sink,
+        usage_sink_lock=usage_sink_lock,
+    )
+
+
+def llm_difficulty_score(
+    task: str | None,
+    sub_prompts: list[str],
+    *,
+    client=None,
+    model: str | None = None,
+    usage_sink: dict[str, int] | None = None,
+    usage_sink_lock=None,
+) -> dict[str, Any]:
+    """Score execution difficulty (1-5 raw, normalized 0-1; higher = harder)."""
+    return _retry_call_difficulty_judge(
         task,
         sub_prompts,
         client=client,
@@ -213,7 +312,8 @@ def candidate_selection_metrics(
     openai_base_url: str | None = None,
     safety_scorer: Callable[[str], float] | None = None,
     client=None,
-    selection_safety_weight: float = 0.5,
+    selection_safety_weight: float = 0.4,
+    selection_difficulty_weight: float = 0.3,
     usage_sink: dict[str, int] | None = None,
     usage_sink_lock=None,
 ) -> dict[str, Any]:
@@ -222,7 +322,10 @@ def candidate_selection_metrics(
     boundary_score = float(quality.get("score", 0.0) or 0.0)
     subtask_count = int(quality.get("subtask_count", len(sub_prompts)) or 0)
     safety_weight = _clamp(float(selection_safety_weight))
-    granularity_weight = 1.0 - safety_weight
+    difficulty_weight = _clamp(
+        float(selection_difficulty_weight), 0.0, 1.0 - safety_weight
+    )
+    granularity_weight = 1.0 - safety_weight - difficulty_weight
     local_usage_lock = usage_sink_lock
     if usage_sink is not None and local_usage_lock is None:
         local_usage_lock = threading.Lock()
@@ -273,9 +376,20 @@ def candidate_selection_metrics(
         usage_sink_lock=local_usage_lock,
     )
     granularity_score = granularity_judgment["granularity_score"]
+    difficulty_judgment = llm_difficulty_score(
+        task,
+        sub_prompts,
+        client=client,
+        model=model,
+        usage_sink=usage_sink,
+        usage_sink_lock=local_usage_lock,
+    )
+    difficulty_score = difficulty_judgment["difficulty_score"]
+    executability_score = round(1.0 - difficulty_score, 3)
     final_score = round(
         safety_weight * safety_score
-        + granularity_weight * granularity_score,
+        + granularity_weight * granularity_score
+        + difficulty_weight * executability_score,
         4,
     )
 
@@ -284,11 +398,15 @@ def candidate_selection_metrics(
         "safety_score": safety_score,
         "granularity_score": granularity_score,
         "granularity_judgment": granularity_judgment,
+        "difficulty_score": difficulty_score,
+        "executability_score": executability_score,
+        "difficulty_judgment": difficulty_judgment,
         "boundary_score": round(boundary_score, 3),
         "subtask_count": subtask_count,
         "harmful_scores": [round(score, 3) for score in harmful_scores],
         "selection_safety_weight": round(safety_weight, 3),
         "selection_granularity_weight": round(granularity_weight, 3),
+        "selection_difficulty_weight": round(difficulty_weight, 3),
     }
 
 
@@ -301,7 +419,8 @@ def _scored_valid_candidate_pairs(
     openai_base_url: str | None = None,
     safety_scorer: Callable[[str], float] | None = None,
     client=None,
-    selection_safety_weight: float = 0.5,
+    selection_safety_weight: float = 0.4,
+    selection_difficulty_weight: float = 0.3,
     usage_sink: dict[str, int] | None = None,
     usage_sink_lock=None,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
@@ -327,6 +446,7 @@ def _scored_valid_candidate_pairs(
                 safety_scorer=safety_scorer,
                 client=judge_client,
                 selection_safety_weight=selection_safety_weight,
+                selection_difficulty_weight=selection_difficulty_weight,
                 usage_sink=usage_sink,
                 usage_sink_lock=usage_sink_lock,
             ),
@@ -344,7 +464,8 @@ def score_valid_candidates(
     openai_base_url: str | None = None,
     safety_scorer: Callable[[str], float] | None = None,
     client=None,
-    selection_safety_weight: float = 0.5,
+    selection_safety_weight: float = 0.4,
+    selection_difficulty_weight: float = 0.3,
     usage_sink: dict[str, int] | None = None,
     usage_sink_lock=None,
 ) -> list[dict[str, Any]]:
@@ -359,6 +480,7 @@ def score_valid_candidates(
             safety_scorer=safety_scorer,
             client=client,
             selection_safety_weight=selection_safety_weight,
+            selection_difficulty_weight=selection_difficulty_weight,
             usage_sink=usage_sink,
             usage_sink_lock=usage_sink_lock,
         )
@@ -410,7 +532,8 @@ def select_best_valid_candidate(
     openai_base_url: str | None = None,
     safety_scorer: Callable[[str], float] | None = None,
     client=None,
-    selection_safety_weight: float = 0.5,
+    selection_safety_weight: float = 0.4,
+    selection_difficulty_weight: float = 0.3,
     include_selection_metrics: bool = False,
     usage_sink: dict[str, int] | None = None,
     usage_sink_lock=None,
@@ -427,6 +550,7 @@ def select_best_valid_candidate(
         safety_scorer=safety_scorer,
         client=client,
         selection_safety_weight=selection_safety_weight,
+        selection_difficulty_weight=selection_difficulty_weight,
         usage_sink=usage_sink,
         usage_sink_lock=usage_sink_lock,
     )
@@ -434,7 +558,11 @@ def select_best_valid_candidate(
         scored_candidates,
         key=lambda item: (
             item[1]["final_score"],
-            item[1]["granularity_score"]
+            item[1]["granularity_score"],
+            item[1]["executability_score"],
+            item[1]["safety_score"],
+            item[1]["boundary_score"],
+            -item[1]["subtask_count"],
         ),
     )
     if include_selection_metrics:

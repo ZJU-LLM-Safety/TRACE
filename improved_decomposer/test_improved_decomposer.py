@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import json
+
 import pytest
 
 from improved_subtask_score import boundary_quality_score
@@ -14,6 +16,10 @@ from improved_task_decomposer import (
     refine_sub_prompts,
 )
 from improved_task_critique import combine_boundary_quality
+from improved_task_prompts import (
+    build_execution_difficulty_judge_prompt,
+    build_granularity_judge_prompt,
+)
 from improved_task_schema import (
     build_decompose_with_schema_prompt,
     resolve_schema_definitions,
@@ -879,6 +885,67 @@ def test_relaxes_certificate_attribute_and_transfer_critiques():
     assert critique["valid"] is True
 
 
+class FakeJudgeCompletions:
+    """Fake chat backend answering both selection judge prompts.
+
+    Dispatches on the JSON contract key so candidate-level calls never collide;
+    per-candidate raw scores are injected by matching a snippet of the
+    candidate's sub-prompt text.
+    """
+
+    def __init__(
+        self,
+        granularity_by_snippet=None,
+        difficulty_by_snippet=None,
+        default_granularity=3,
+        default_difficulty=2,
+    ):
+        self.granularity_by_snippet = granularity_by_snippet or {}
+        self.difficulty_by_snippet = difficulty_by_snippet or {}
+        self.default_granularity = default_granularity
+        self.default_difficulty = default_difficulty
+
+    def create(self, **kwargs):
+        prompt = kwargs["messages"][0]["content"]
+        if '"difficulty_score"' in prompt:
+            raw = next(
+                (
+                    score
+                    for snippet, score in self.difficulty_by_snippet.items()
+                    if snippet in prompt
+                ),
+                self.default_difficulty,
+            )
+            content = (
+                '{"difficulty_score": '
+                f"{raw}, "
+                '"judgment": "easy", "hardest_steps": [], "reason": "test"}'
+            )
+        else:
+            raw = next(
+                (
+                    score
+                    for snippet, score in self.granularity_by_snippet.items()
+                    if snippet in prompt
+                ),
+                self.default_granularity,
+            )
+            content = (
+                '{"granularity_score": '
+                f"{raw}, "
+                '"judgment": "appropriate", "reason": "test"}'
+            )
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+        )
+
+
+def fake_judge_client(**kwargs):
+    return SimpleNamespace(
+        chat=SimpleNamespace(completions=FakeJudgeCompletions(**kwargs))
+    )
+
+
 def test_selection_prefers_safer_candidate_sequence():
     candidates = [
         {
@@ -900,7 +967,13 @@ def test_selection_prefers_safer_candidate_sequence():
     def safety_scorer(prompt: str) -> float:
         return 1.0 if "dangerous" in prompt else 0.2
 
-    best = select_best_valid_candidate(candidates, safety_scorer=safety_scorer)
+    best = select_best_valid_candidate(
+        candidates,
+        task="Decompose this task.",
+        model="test-model",
+        client=fake_judge_client(),
+        safety_scorer=safety_scorer,
+    )
 
     assert best == candidates[0]
 
@@ -929,67 +1002,269 @@ def test_selection_prefers_balanced_granularity_over_over_split():
     def safety_scorer(prompt: str) -> float:
         return 0.2
 
-    balanced_metrics = candidate_selection_metrics(
-        balanced, safety_scorer=safety_scorer
+    client = fake_judge_client(
+        granularity_by_snippet={"Confirm the final state": 4, "Name the artifact": 2}
     )
-    over_split_metrics = candidate_selection_metrics(
-        over_split, safety_scorer=safety_scorer
+    metrics_kwargs = dict(
+        task="Decompose this task.",
+        model="test-model",
+        client=client,
+        safety_scorer=safety_scorer,
+        selection_safety_weight=0.0,
+        selection_difficulty_weight=0.0,
     )
+
+    balanced_metrics = candidate_selection_metrics(balanced, **metrics_kwargs)
+    over_split_metrics = candidate_selection_metrics(over_split, **metrics_kwargs)
 
     assert balanced_metrics["granularity_score"] > over_split_metrics["granularity_score"]
     assert select_best_valid_candidate(
-        [over_split, balanced], safety_scorer=safety_scorer
+        [over_split, balanced],
+        **metrics_kwargs,
     ) == balanced
 
 
-def test_selection_uses_positive_llm_granularity_score_and_weight():
-    class FakeCompletions:
-        def create(self, **kwargs):
-            prompt = kwargs["messages"][0]["content"]
-            score = 0.95 if "coarse" in prompt else 0.25
-            content = (
-                '{"granularity_score": '
-                f"{score}, "
-                '"judgment": "appropriate", "reason": "test"}'
-            )
-            return SimpleNamespace(
-                choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
-            )
-
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+def test_selection_weights_trade_safety_against_granularity_and_difficulty():
+    # Candidate 0 is safer but coarser and harder to execute; candidate 1 is
+    # more harmful but finely split and trivial to execute.
     candidates = [
         {
-            "sub_prompts": ["Use the coarse user-level boundary."],
+            "sub_prompts": ["Use the coarse boundary for the whole task."],
             "boundary_quality": {"score": 0.8, "subtask_count": 1},
         },
         {
-            "sub_prompts": ["Use the unsafe micro-step boundary."],
+            "sub_prompts": [
+                "Do the unsafe step with the exact file path.",
+                "Do the second unsafe step with the exact file path.",
+            ],
+            "boundary_quality": {"score": 0.8, "subtask_count": 2},
+        },
+    ]
+    client = fake_judge_client(
+        granularity_by_snippet={"coarse boundary": 2, "unsafe step": 5},
+        difficulty_by_snippet={"coarse boundary": 4, "unsafe step": 1},
+    )
+
+    def safety_scorer(prompt: str) -> float:
+        return 1.0 if "unsafe" in prompt else 0.2
+
+    selection_kwargs = dict(
+        task="Decompose this task.",
+        model="test-model",
+        client=client,
+        safety_scorer=safety_scorer,
+    )
+
+    safety_first = select_best_valid_candidate(
+        candidates,
+        selection_safety_weight=1.0,
+        **selection_kwargs,
+    )
+    granularity_first = select_best_valid_candidate(
+        candidates,
+        selection_safety_weight=0.0,
+        selection_difficulty_weight=0.0,
+        **selection_kwargs,
+    )
+    difficulty_first = select_best_valid_candidate(
+        candidates,
+        selection_safety_weight=0.0,
+        selection_difficulty_weight=1.0,
+        **selection_kwargs,
+    )
+
+    assert safety_first is candidates[0]
+    assert granularity_first is candidates[1]
+    assert difficulty_first is candidates[1]
+
+
+def test_final_score_is_three_weight_combination(monkeypatch):
+    monkeypatch.setattr(
+        selection_module,
+        "llm_granularity_score",
+        lambda *args, **kwargs: {
+            "granularity_score": 0.8,
+            "judgment": "appropriate",
+            "reason": "test",
+        },
+    )
+    monkeypatch.setattr(
+        selection_module,
+        "llm_difficulty_score",
+        lambda *args, **kwargs: {
+            "difficulty_score": 0.6,
+            "judgment": "hard",
+            "hardest_steps": [],
+            "reason": "test",
+        },
+    )
+    candidate = {
+        "sub_prompts": ["Do the first step.", "Do the second step."],
+        "boundary_quality": {"score": 0.8, "subtask_count": 2},
+    }
+
+    metrics = candidate_selection_metrics(
+        candidate,
+        safety_scorer=lambda prompt: 0.25,
+    )
+
+    assert metrics["executability_score"] == 0.4
+    assert metrics["difficulty_score"] == 0.6
+    assert metrics["final_score"] == round(0.4 * 0.75 + 0.3 * 0.8 + 0.3 * 0.4, 4)
+    assert metrics["selection_safety_weight"] == 0.4
+    assert metrics["selection_granularity_weight"] == 0.3
+    assert metrics["selection_difficulty_weight"] == 0.3
+
+
+def test_difficulty_weight_clamped_to_remaining_mass(monkeypatch):
+    monkeypatch.setattr(
+        selection_module,
+        "llm_granularity_score",
+        lambda *args, **kwargs: {
+            "granularity_score": 0.5,
+            "judgment": "mixed",
+            "reason": "test",
+        },
+    )
+    monkeypatch.setattr(
+        selection_module,
+        "llm_difficulty_score",
+        lambda *args, **kwargs: {
+            "difficulty_score": 0.2,
+            "judgment": "easy",
+            "hardest_steps": [],
+            "reason": "test",
+        },
+    )
+    candidate = {
+        "sub_prompts": ["Do the only step."],
+        "boundary_quality": {"score": 0.8, "subtask_count": 1},
+    }
+
+    metrics = candidate_selection_metrics(
+        candidate,
+        safety_scorer=lambda prompt: 0.2,
+        selection_safety_weight=0.9,
+        selection_difficulty_weight=0.5,
+    )
+
+    assert metrics["selection_safety_weight"] == 0.9
+    assert metrics["selection_difficulty_weight"] == 0.1
+    assert metrics["selection_granularity_weight"] == 0.0
+    assert metrics["final_score"] == round(0.9 * 0.8 + 0.0 * 0.5 + 0.1 * 0.8, 4)
+
+
+def test_difficulty_judgment_normalization_and_defaults():
+    result = selection_module._normalize_difficulty_judgment(
+        {
+            "difficulty_score": 5,
+            "judgment": "infeasible",
+            "hardest_steps": [2],
+            "reason": "missing endpoint",
+        }
+    )
+    assert result["difficulty_score"] == 1.0
+    assert result["raw_difficulty_score"] == 5.0
+    assert result["source"] == "llm"
+
+    result = selection_module._normalize_difficulty_judgment({"difficulty_score": 1})
+    assert result["difficulty_score"] == 0.2
+    assert result["judgment"] == ""
+    assert result["hardest_steps"] == []
+    assert result["reason"] == ""
+
+    result = selection_module._normalize_difficulty_judgment({"difficulty_score": 0.5})
+    assert result["difficulty_score"] == 0.5
+
+    with pytest.raises(ValueError):
+        selection_module._normalize_difficulty_judgment(["not", "a", "dict"])
+    with pytest.raises(ValueError):
+        selection_module._normalize_difficulty_judgment({"difficulty_score": None})
+    with pytest.raises(ValueError):
+        selection_module._normalize_difficulty_judgment({"difficulty_score": True})
+
+
+def test_difficulty_judge_retries_then_raises(monkeypatch):
+    calls = {"count": 0, "sleeps": 0}
+
+    def failing_call(*args, **kwargs):
+        calls["count"] += 1
+        raise RuntimeError("judge unavailable")
+
+    def fake_sleep(seconds):
+        calls["sleeps"] += 1
+        assert seconds == 2
+
+    monkeypatch.setattr(selection_module, "_call_difficulty_judge", failing_call)
+    monkeypatch.setattr(selection_module.time, "sleep", fake_sleep)
+
+    with pytest.raises(RuntimeError, match="judge unavailable"):
+        selection_module.llm_difficulty_score(
+            "Decompose this task.",
+            ["Use the coarse user-level boundary."],
+            client=SimpleNamespace(),
+            model="test-model",
+        )
+
+    assert calls["count"] == 10
+    # The retry loop sleeps after every failed attempt, including the last one.
+    assert calls["sleeps"] == 10
+
+
+def test_difficulty_prompt_contract_and_orthogonality():
+    task = "Do the multi-step task."
+    sub_prompts = ["Do the first step.", "Do the second step."]
+    difficulty_prompt = build_execution_difficulty_judge_prompt(task, sub_prompts)
+    granularity_prompt = build_granularity_judge_prompt(task, sub_prompts)
+
+    assert task in difficulty_prompt
+    assert json.dumps(sub_prompts, ensure_ascii=False) in difficulty_prompt
+    assert '"difficulty_score"' in difficulty_prompt
+    assert "trivial|easy|moderate|hard|infeasible" in difficulty_prompt
+    assert "granularity" not in difficulty_prompt
+    assert "difficulty" not in granularity_prompt
+
+
+def test_selection_tiebreak_prefers_higher_executability(monkeypatch):
+    # Identical final_score and granularity; only executability differs.
+    monkeypatch.setattr(
+        selection_module,
+        "llm_granularity_score",
+        lambda *args, **kwargs: {
+            "granularity_score": 0.6,
+            "judgment": "appropriate",
+            "reason": "test",
+        },
+    )
+
+    def difficulty_score(task, sub_prompts, **kwargs):
+        harder = "fragile" in " ".join(sub_prompts)
+        return {
+            "difficulty_score": 0.6 if harder else 0.2,
+            "judgment": "hard" if harder else "easy",
+            "hardest_steps": [],
+            "reason": "test",
+        }
+
+    monkeypatch.setattr(selection_module, "llm_difficulty_score", difficulty_score)
+
+    candidates = [
+        {
+            "sub_prompts": ["Do the fragile multi-hop step."],
+            "boundary_quality": {"score": 0.8, "subtask_count": 1},
+        },
+        {
+            "sub_prompts": ["Do the fully specified step."],
             "boundary_quality": {"score": 0.8, "subtask_count": 1},
         },
     ]
 
     def safety_scorer(prompt: str) -> float:
-        return 1.0 if "unsafe" in prompt else 0.2
+        return 0.2 if "fragile" in prompt else 0.5
 
-    granularity_first = select_best_valid_candidate(
-        candidates,
-        task="Decompose this task.",
-        model="test-model",
-        client=fake_client,
-        safety_scorer=safety_scorer,
-        selection_safety_weight=0.0,
-    )
-    safety_first = select_best_valid_candidate(
-        candidates,
-        task="Decompose this task.",
-        model="test-model",
-        client=fake_client,
-        safety_scorer=safety_scorer,
-        selection_safety_weight=1.0,
-    )
+    best = select_best_valid_candidate(candidates, safety_scorer=safety_scorer)
 
-    assert granularity_first is candidates[0]
-    assert safety_first is candidates[0]
+    assert best is candidates[1]
 
 
 def test_granularity_judge_retries_then_raises(monkeypatch):
@@ -1023,7 +1298,7 @@ def test_safety_score_retries_then_raises(monkeypatch):
         calls["sleeps"] += 1
         assert seconds == 2
 
-    selection_module._template_harmfulness_score.cache_clear()
+    selection_module._template_harmfulness_score_cached.cache_clear()
     monkeypatch.setattr(selection_module, "template_safety_score", failing_template_safety_score)
     monkeypatch.setattr(selection_module.time, "sleep", fake_sleep)
 
@@ -1065,6 +1340,7 @@ def test_decompose_uses_llm_quality_without_refinement(monkeypatch):
                 "selection_metrics": {
                     "final_score": 1.0,
                     "granularity_score": 1.0,
+                    "executability_score": 1.0,
                     "safety_score": 1.0,
                     "boundary_score": 1.0,
                     "subtask_count": len(candidate["sub_prompts"]),
@@ -1098,6 +1374,72 @@ def test_decompose_uses_llm_quality_without_refinement(monkeypatch):
     assert called["llm_quality"] == 1
     assert result
     assert trace["valid_candidates"]
+
+
+def test_decompose_task_forwards_difficulty_weight(monkeypatch):
+    class FakeCompletions:
+        def create(self, **kwargs):
+            prompt = kwargs["messages"][0]["content"]
+            if "Return ONLY a JSON list of strings." in prompt:
+                content = '["Inspect the task.", "Perform the main action."]'
+            else:
+                content = '{"valid": true, "score": 0.9, "issues": [], "revision_guidance": []}'
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    captured = {}
+
+    def fake_score_valid_candidates(valid_candidates, **kwargs):
+        captured.update(kwargs)
+        return [
+            {
+                **candidate,
+                "selection_metrics": {
+                    "final_score": 1.0,
+                    "granularity_score": 1.0,
+                    "executability_score": 1.0,
+                    "safety_score": 1.0,
+                    "boundary_score": 1.0,
+                    "subtask_count": len(candidate["sub_prompts"]),
+                },
+            }
+            for candidate in valid_candidates
+        ]
+
+    monkeypatch.setattr(decomposer_module, "get_openai_client", lambda **kwargs: fake_client)
+    monkeypatch.setattr(
+        decomposer_module,
+        "refine_sub_prompts",
+        lambda sub_prompts, original_task=None: sub_prompts,
+    )
+    monkeypatch.setattr(
+        decomposer_module,
+        "llm_decomposition_quality_score",
+        lambda *args, **kwargs: {
+            "valid": True,
+            "score": 0.9,
+            "issues": [],
+            "revision_guidance": [],
+        },
+    )
+    monkeypatch.setattr(decomposer_module, "score_valid_candidates", fake_score_valid_candidates)
+
+    result, trace = decomposer_module.decompose_task(
+        "Do the thing.",
+        model="test-model",
+        num_decompositions_per_task=1,
+        use_llm_quality_refinement=False,
+        selection_safety_weight=0.7,
+        selection_difficulty_weight=0.2,
+        return_trace=True,
+    )
+
+    assert result
+    assert captured["selection_safety_weight"] == 0.7
+    assert captured["selection_difficulty_weight"] == 0.2
+    assert trace["selection_difficulty_weight"] == 0.2
 
 
 def test_schema_selection_finds_multiple_advcua_schemas(monkeypatch):

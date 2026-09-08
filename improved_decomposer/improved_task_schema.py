@@ -418,7 +418,8 @@ def decompose_task_with_schema(
     use_llm_quality_refinement: bool = True,
     quality_refinement_rounds: int = 1,
     max_regeneration_attempts: int = 3,
-    selection_safety_weight: float = 0.5,
+    selection_safety_weight: float = 0.4,
+    selection_difficulty_weight: float = 0.3,
     use_local_rules: bool = True,
     schema_names: list[str] | None = None,
     return_trace: bool = False,
@@ -456,6 +457,7 @@ def decompose_task_with_schema(
         "valid_candidates": [],
         "decomposition_token_cost": 0,
         "selection_safety_weight": selection_safety_weight,
+        "selection_difficulty_weight": selection_difficulty_weight,
         "quality_refinement_enabled": bool(use_llm_quality_refinement and quality_refinement_rounds > 0),
         "quality_refinement_rounds": quality_refinement_rounds,
         "require_llm_equivalence": require_llm_equivalence,
@@ -631,6 +633,7 @@ def decompose_task_with_schema(
         openai_base_url=openai_base_url,
         client=client,
         selection_safety_weight=selection_safety_weight,
+        selection_difficulty_weight=selection_difficulty_weight,
         usage_sink=generation_trace,
     )
     generation_trace["valid_candidates"] = scored_valid_candidates
@@ -642,6 +645,7 @@ def decompose_task_with_schema(
         key=lambda item: (
             item[1]["final_score"],
             item[1]["granularity_score"],
+            item[1]["executability_score"],
             item[1]["safety_score"],
             item[1]["boundary_score"],
             -item[1]["subtask_count"],
