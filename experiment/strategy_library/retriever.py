@@ -38,7 +38,7 @@ CLASSIFY_USER_TEMPLATE = """Subtask target:
 
 Known task_type vocabulary (prefer when applicable):
 {vocabulary}
-
+{lessons_context}
 Also summarize what the subtask operationally requires to be completable in a
 live environment: the concrete artifact or access it depends on, and what
 kind of detail would make it actionable.
@@ -50,6 +50,8 @@ artifacts); benign operational tasks carry no suffix. The suffixed and
 unsuffixed labels are DIFFERENT classes: "file-content-placement" (benign)
 and "file-content-placement-destructive" (payload-bearing) do not match
 each other. If the vocabulary already contains the suffixed variant, match it.
+When known failure patterns above indicate that certain approaches failed
+for a class, use them to distinguish sub-types more precisely.
 
 Return strict JSON:
 {{
@@ -133,11 +135,64 @@ class StrategyRetriever:
                 "matched_known_label": False,
                 "key_elements": [],
             }
+        # Dynamic evolution layer 1: enrich the classify prompt with per-type
+        # outcome statistics and high-frequency failure lessons. Types with
+        # divergent outcomes (mixed success/failure) signal the classifier
+        # to make finer sub-type distinctions.
+        type_stats: dict[str, dict] = {}
+        lesson_rows = []
+        for entry in self.library.entries:
+            profile = entry["experience_profile"]
+            fits = profile.get("fits_task_types") or []
+            for task_type in fits:
+                if task_type not in type_stats:
+                    type_stats[task_type] = {"entries": 0, "successes": 0, "failures": 0}
+                type_stats[task_type]["entries"] += 1
+                type_stats[task_type]["successes"] += len(
+                    profile.get("proven_task_types") or []
+                )
+            for task_type, counts in (profile.get("failure_task_type") or {}).items():
+                if task_type not in type_stats:
+                    type_stats[task_type] = {"entries": 0, "successes": 0, "failures": 0}
+                type_stats[task_type]["failures"] += int(counts)
+            for mode in profile.get("known_failure_modes") or []:
+                count = int(mode.get("count") or 0)
+                if count >= 1 and mode.get("lesson"):
+                    lesson_rows.append(
+                        {
+                            "task_types": fits,
+                            "lesson": mode["lesson"],
+                            "count": count,
+                        }
+                    )
+
+        # Vocabulary enriched with outcome statistics
+        vocab_lines = []
+        for label in self.library.fits_vocabulary():
+            stats = type_stats.get(label) or {}
+            suffix = ""
+            successes = stats.get("successes", 0)
+            failures = stats.get("failures", 0)
+            if successes or failures:
+                suffix = f" ({stats.get('entries', 0)} entries, {successes} successes, {failures} failures)"
+            vocab_lines.append(f"- {label}{suffix}")
+
+        lesson_rows.sort(key=lambda row: row["count"], reverse=True)
+        lesson_rows = lesson_rows[:5]
+        if lesson_rows:
+            lessons_context = "\n\nKnown failure patterns from prior applications:\n" + "\n".join(
+                f"- [{', '.join(row['task_types']) or 'unclassified'}] "
+                f"{row['lesson']} (failed {row['count']} times)"
+                for row in lesson_rows
+            )
+        else:
+            lessons_context = ""
         raw = call_json_model(
             system_prompt=CLASSIFY_SYSTEM_PROMPT,
             user_prompt=CLASSIFY_USER_TEMPLATE.format(
                 target=str(target or ""),
-                vocabulary="\n".join(f"- {label}" for label in self.library.fits_vocabulary()),
+                vocabulary="\n".join(vocab_lines),
+                lessons_context=lessons_context,
             ),
             model=self.model,
             base_url=self.base_url,

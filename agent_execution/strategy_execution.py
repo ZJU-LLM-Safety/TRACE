@@ -269,7 +269,7 @@ def build_strategy_execution_prompt(
         "input_output": strategy_run.get("input_output") or [],
     }
     output_mode = getattr(args, "strategy_execution_output_mode", "all")
-    source_text, source_kind = subtask_source_context(entry, output_mode)
+    source_text, source_kind = subtask_source_context(entry, output_mode, subtask_target=subtask)
     if not source_text:
         raise ValueError(f"subtask {subtask_index} has no source text for execution")
 
