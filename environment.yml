@@ -1,4 +1,4 @@
-name: x-teaming
+name: trace
 channels:
   - conda-forge
   - defaults

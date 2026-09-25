@@ -2,7 +2,7 @@
 
 Reusable execution interfaces for trace experiments.
 
-This package contains method-agnostic building blocks for running an agent target in the prepared execution environment. It is intended to be reused by x-teaming, decomposition-based methods, and other attack/evaluation pipelines.
+This package contains method-agnostic building blocks for running an agent target in the prepared execution environment. It is intended to be reused by decomposition-based methods, and other attack/evaluation pipelines.
 
 ## Modules
 
@@ -35,7 +35,7 @@ class MyMethodRunner(MultiSubtaskRunner):
         ...
 ```
 
-The x-teaming adapter does exactly this in `xteaming_vrap.sequence.XTeamingSubtaskRunner`, where `run_subtask()` calls `run_xteaming_subtask(...)`.
+The baseline adapter does exactly this in `xteaming_vrap.sequence.XTeamingSubtaskRunner`, where `run_subtask()` calls `run_xteaming_subtask(...)`.
 
 ## Promotion vs. TextGrad
 
@@ -47,7 +47,7 @@ State promotion is independent of TextGrad. The reusable concept is:
 4. let the caller decide which candidate wins;
 5. promote the winning candidate state as the new formal state.
 
-TextGrad is only one possible way to generate candidate inputs. Future optimizers can reuse `ReplayTrialTarget` or `SnapshotPromotedTrialTarget` without depending on TextGrad. Backward-compatible aliases `IsolatedTextGradTrialTarget` and `SnapshotPromotedTextGradTrialTarget` remain for the existing x-teaming code.
+TextGrad is only one possible way to generate candidate inputs. Future optimizers can reuse `ReplayTrialTarget` or `SnapshotPromotedTrialTarget` without depending on TextGrad. Backward-compatible aliases `IsolatedTextGradTrialTarget` and `SnapshotPromotedTextGradTrialTarget` remain for the existing baseline code.
 
 ## Live Verify And Replay Verify
 
@@ -73,7 +73,7 @@ This keeps Docker command execution and action shape handling in `trace/tools`, 
 
 ## Compatibility
 
-The self-contained x-teaming copy under `run_xteaming/` imports this package through the trace root. New methods can import directly from this package with:
+The self-contained baseline copy under `run_xteaming/` imports this package through the trace root. New methods can import directly from this package with:
 
 ```bash
 PYTHONPATH=/path/to/trace python ...

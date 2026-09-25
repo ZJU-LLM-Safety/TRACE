@@ -1,6 +1,6 @@
 """Reusable agent execution interfaces for trace experiments.
 
-This package hosts method-agnostic pieces that can be used by x-teaming,
+This package hosts method-agnostic pieces that can be used by baseline,
 decomposition-based runs, or other attack/evaluation methods. Method-specific
 strategy generation and optimization loops should live outside this package.
 """

@@ -65,7 +65,7 @@ from agent_execution.strategy_execution import (  # noqa: E402
 )
 from agent_execution.utils import with_strategy_meta  # noqa: E402
 
-DEFAULT_RESPONSES_BASE_URL = "https://az.gptplus5.com/v1"
+DEFAULT_RESPONSES_BASE_URL = "{OPENAI_BASE_URL_ENV}"
 MAX_JUDGE_TEXT_CHARS = 4000
 MAX_JUDGE_ACTIONS = 20
 DIRECT_EXECUTION_FALLBACK_PATTERNS = (
@@ -1983,7 +1983,7 @@ def main() -> int:
         args.strategy_library_handle = load_strategy_library_runtime(
             args.strategy_library,
             base_url=getattr(args, "responses_base_url", None)
-            or os.environ.get("OPENAI_BASE_URL", "https://az.gptplus5.com/v1"),
+            or os.environ.get("OPENAI_BASE_URL", "{OPENAI_BASE_URL_ENV}"),
             api_key=os.environ.get("OPENAI_API_KEY"),
             revision_threshold=int(getattr(args, "revision_threshold", 3) or 3),
             task_type_threshold=int(getattr(args, "task_type_threshold", 5) or 5),

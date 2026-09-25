@@ -1,6 +1,6 @@
 attacker:
   provider: transformers
-  model: /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct
+  model: ${QWEN_MODEL_PATH}
   temperature: 0.3
   max_retries: 10
   max_turns: 7
@@ -18,7 +18,7 @@ target:
 textgrad:
   enabled: false
   provider: transformers
-  model: /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct
+  model: ${QWEN_MODEL_PATH}
   temperature: 0
   max_retries: 10
   max_turns_per_phase: 4
@@ -31,7 +31,7 @@ multithreading:
 
 attack_plan_generator:
   provider: transformers
-  model: /hub/huggingface/models/Qwen/Qwen2.5-32B-Instruct
+  model: ${QWEN_MODEL_PATH}
   temperature: 0.5
   max_retries: 3
   max_new_tokens: 4096

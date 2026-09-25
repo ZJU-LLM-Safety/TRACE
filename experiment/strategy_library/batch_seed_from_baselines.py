@@ -28,13 +28,13 @@ from extract_patterns_from_success import (
 
 STRATEGY_LIBRARY_ROOT = Path(__file__).resolve().parent
 
-BASELINE_ROOT = Path("/home/churui/agent_jailbreak/Baselines/x-teaming/xteaming_vrap_codex_outputs/final")
-NYUCTF_ROOT = Path("/home/churui/agent_jailbreak/trace/run_xteaming/xteaming_vrap_codex_outputs/nyuctf_results")
+BASELINE_ROOT = Path("<BASELINES_ROOT>/baseline/xteaming_vrap_codex_outputs/final")
+NYUCTF_ROOT = Path("<PROJECT_ROOT>/run_xteaming/xteaming_vrap_codex_outputs/nyuctf_results")
 
 MAX_JUDGE_TEXT_CHARS = 4000
 MAX_JUDGE_ACTIONS = 20
 
-# advcua_easy: x-teaming conversations + execution variants (union-mined per subtask)
+# advcua_easy: baseline conversations + execution variants (union-mined per subtask)
 EASY_SOURCES = {
     "conversations": BASELINE_ROOT / "advcua_easy/xteaming_session_bypass_merged_20260812/results.jsonl",
     "exec_variants": [
@@ -396,7 +396,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=STRATEGY_LIBRARY_ROOT / "batch_seed")
     parser.add_argument("--model", default="gpt-4o-2024-11-20")
     parser.add_argument("--judge-model", default="gpt-4o-2024-11-20")
-    parser.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "https://az.gptplus5.com/v1"))
+    parser.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "{OPENAI_BASE_URL_ENV}"))
     parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
     parser.add_argument("--timeout", type=float, default=240.0)
     return parser

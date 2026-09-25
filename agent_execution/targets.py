@@ -44,7 +44,7 @@ from vrap_action_replay import (
 class VrapCodexTarget:
     """Target wrapper that preserves one agent session per subtask run.
 
-    The historical class name is retained for x-teaming compatibility. The
+    The historical class name is retained for baseline compatibility. The
     runtime is selected by ``args.target_backend`` and currently supports
     ``codex`` and ``claude``.
     """

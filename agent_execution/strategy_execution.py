@@ -394,7 +394,7 @@ def execute_strategy_output_and_verify(
     strategy_run: dict[str, Any],
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    """Run the saved output from one x-teaming strategy, then live-verify it."""
+    """Run the saved output from one baseline strategy, then live-verify it."""
 
     attacker_identity = str(item.get("attacker_identity") or "root")
     agent_user = args.agent_user or attacker_identity
@@ -520,7 +520,7 @@ def apply_strategy_execution_result(
     strategy_run: dict[str, Any],
     execution: dict[str, Any],
 ) -> None:
-    """Attach execution artifacts to a strategy run without hiding x-teaming turns."""
+    """Attach execution artifacts to a strategy run without hiding baseline turns."""
 
     strategy_run["strategy_execution"] = execution
     strategy_run["execution_input_output"] = execution.get("input_output") or []
