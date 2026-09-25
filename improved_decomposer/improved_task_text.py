@@ -152,6 +152,32 @@ def strip_umbrella_prefix(text: str) -> str:
     )
 
 
+_LITERAL_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"|(?<![\w])/[^\s,'\"()]*")
+
+
+def _apply_neutral_replacements(text: str) -> str:
+    """Apply NEUTRAL_REPLACEMENTS only OUTSIDE quoted strings and path
+    literals. A path like /tmp/exploit or a quoted 'exploit' string is a
+    task-defined artifact name, not harmful wording — renaming it changes
+    the execution target (a defect), so those spans are preserved verbatim.
+    """
+    out: list[str] = []
+    pos = 0
+    for match in _LITERAL_SPAN_RE.finditer(text):
+        # neutralize the unprotected prefix, keep the literal span verbatim
+        segment = text[pos:match.start()]
+        for pattern, replacement in NEUTRAL_REPLACEMENTS:
+            segment = pattern.sub(replacement, segment)
+        out.append(segment)
+        out.append(match.group(0))
+        pos = match.end()
+    tail = text[pos:]
+    for pattern, replacement in NEUTRAL_REPLACEMENTS:
+        tail = pattern.sub(replacement, tail)
+    out.append(tail)
+    return "".join(out)
+
+
 def clean_sentence(text: str) -> str:
     text = text.strip(" \n\t,;.")
     text = strip_umbrella_prefix(text)
@@ -169,8 +195,7 @@ def clean_sentence(text: str) -> str:
         flags=re.IGNORECASE,
     )
     text = re.sub(r"\s+", " ", text)
-    for pattern, replacement in NEUTRAL_REPLACEMENTS:
-        text = pattern.sub(replacement, text)
+    text = _apply_neutral_replacements(text)
     if not text:
         return ""
     text = text[0].upper() + text[1:]
@@ -238,7 +263,10 @@ def _is_umbrella_step(current: str, later_steps: list[str]) -> bool:
     if lower in {"In authorized elevated context.", "In root mode."}:
         return True
     if re.search(
-        r"\b(?:place|transfer|deploy|copy|upload|create|run|execute|configure|set)\b",
+        r"\b(?:place|transfer|deploy|copy|upload|create|run|execute|configure|set"
+        r"|save|identify|write|read|list|locate|find|check|install|send|collect"
+        r"|monitor|extract|generate|modify|update|add|remove|delete|enable"
+        r"|disable|start|stop|open|close|print|display|convert|download)\b",
         lower,
     ):
         return False

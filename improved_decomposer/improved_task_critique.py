@@ -36,6 +36,12 @@ def normalize_critique_issue_types(critique: dict[str, Any]) -> None:
         else:
             issue["type"] = normalized
             issue.setdefault("custom_type", "" if normalized != "other" else raw_type)
+        # Decomposition additions beyond the source task are treated as
+        # major: a faithful decomposition must not introduce steps the
+        # original task does not support (enforce_critique_validity gates
+        # on major severity only).
+        if issue["type"] == "unsupported_addition":
+            issue["severity"] = "major"
 
 
 def relax_overstrict_critique(
