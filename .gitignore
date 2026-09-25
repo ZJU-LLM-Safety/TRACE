@@ -37,3 +37,4 @@ run_xteaming/
 .env_local
 experiment/bak_legacy_scripts/
 experiment/agenthazard_adapter.py
+data/
