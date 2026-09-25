@@ -849,7 +849,6 @@ def run_direct_execution_probe(
         backend=executor.backend,
         agent_user=executor.agent_user,
         resume_session_id=executor.session_id,
-        nyuctf_env_info=executor.nyuctf_env_info,
     )
     executor.session_id = result.get("thread_id") or executor.session_id
     actions = result.get("actions") or []
@@ -1753,12 +1752,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset", type=Path, default=Path("data/advcua_test.jsonl"))
     parser.add_argument(
         "--lab-backend",
-        choices=("vrap", "nyuctf"),
+        choices=("vrap", "agenthazard"),
         default="vrap",
         help="Execution lab to use for target model turns.",
     )
     parser.add_argument("--compose-file", type=Path, default=DEFAULT_COMPOSE)
-    parser.add_argument("--nyuctf-root", type=Path, default=Path("../data/nyuctf/.nyuctf"))
     parser.add_argument("--image-name", default="attackenv:latest")
     parser.add_argument("--cpus", type=float, default=2.0)
     parser.add_argument("--memory", default="4g")
@@ -1894,13 +1892,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PLAN_PROMPTS_PATH,
     )
     return parser
-
-
-def validate_lab_mode(args: argparse.Namespace) -> None:
-    if args.lab_backend != "nyuctf":
-        return
-    if args.textgrad:
-        raise ValueError("NYUCTF experiment runner currently supports --no-textgrad only.")
 
 
 def make_output_path(output_dir: Path | None) -> Path:
@@ -2048,9 +2039,7 @@ def main() -> int:
         "lab": {
             "backend": args.lab_backend,
             "compose_file": str(args.compose_file) if args.lab_backend == "vrap" else None,
-            "nyuctf_root": str(args.nyuctf_root) if args.lab_backend == "nyuctf" else None,
-            "image_name": args.image_name if args.lab_backend == "nyuctf" else None,
-        },
+                                },
         "selection": {
             "ids": args.ids,
             "all_subtasks": args.all_subtasks,

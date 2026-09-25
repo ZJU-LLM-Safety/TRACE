@@ -1,4 +1,4 @@
-"""Compatibility target helpers with optional NYUCTF lab support."""
+"""Compatibility target helpers for the execution lab."""
 from __future__ import annotations
 
 import sys
@@ -15,21 +15,19 @@ if str(TRACE_TOOLS) not in sys.path:
 
 from agent_execution.targets import *  # noqa: F401,F403,E402
 from agent_execution.targets import VrapCodexTarget as _VrapCodexTarget  # noqa: E402
-from nyuctf_bridge_runner import (  # noqa: E402
-    cleanup_environment as cleanup_nyuctf_environment,
-    run_claude_in_container,
-    run_codex_in_container,
-    setup_environment as setup_nyuctf_environment,
+from agenthazard_bridge import (
+    cleanup_agenthazard_environment,
+    setup_agenthazard_environment,
 )
 
 
 class VrapCodexTarget(_VrapCodexTarget):
-    """Target wrapper for either the historical VRAP lab or NYUCTF Docker lab."""
+    """Target wrapper for the execution lab."""
 
     def __init__(self, item: dict[str, Any], args: Any):
         super().__init__(item, args)
-        self.nyuctf_env_info: dict[str, Any] | None = None
-        if self.lab_backend == "nyuctf":
+        self.agenthazard_env_info: dict[str, Any] | None = None
+        if self.lab_backend == "agenthazard":
             self.attacker_identity = "root"
             self.agent_user = args.agent_user or "root"
 
@@ -39,37 +37,32 @@ class VrapCodexTarget(_VrapCodexTarget):
 
     @property
     def home_path(self) -> str:
-        if self.lab_backend != "nyuctf":
+        if self.lab_backend != "agenthazard":
             return super().home_path
         if self.backend == "claude":
             return "/root"
         return "/root/codex_home"
 
     def __enter__(self) -> "VrapCodexTarget":
-        if self.lab_backend != "nyuctf":
+        if self.lab_backend != "agenthazard":
             return super().__enter__()
-        self.nyuctf_env_info = setup_nyuctf_environment(
+        self.agenthazard_env_info = setup_agenthazard_environment(
             self.item,
-            nyuctf_root=Path(getattr(self.args, "nyuctf_root")),
-            image_name=str(getattr(self.args, "image_name")),
-            cpus=float(getattr(self.args, "cpus", 2.0)),
-            memory=str(getattr(self.args, "memory", "4g")),
-            container_name=getattr(self.args, "container_name", None),
+            compose_file=getattr(self.args, "compose_file", None),
         )
-        self.nyuctf_env_info["image_name"] = str(getattr(self.args, "image_name"))
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        if self.lab_backend != "nyuctf":
+        if self.lab_backend != "agenthazard":
             return super().__exit__(exc_type, exc, tb)
-        if self.nyuctf_env_info is not None and not self.args.keep_container:
-            cleanup_nyuctf_environment(self.nyuctf_env_info)
+        if self.agenthazard_env_info is not None and not self.args.keep_container:
+            cleanup_agenthazard_environment(self.agenthazard_env_info)
 
     def _run_agent(self, prompt: str) -> dict[str, Any]:
-        if self.lab_backend != "nyuctf":
+        if self.lab_backend != "agenthazard":
             return super()._run_agent(prompt)
-        if self.nyuctf_env_info is None:
-            raise RuntimeError("NYUCTF target environment has not been initialized")
+        if self.agenthazard_env_info is None:
+            raise RuntimeError("target environment has not been initialized")
         should_resume = self.args.agent_session == "resume" and bool(self.resume_id)
         timeout = int(
             getattr(self.args, "target_timeout", None)
@@ -78,8 +71,8 @@ class VrapCodexTarget(_VrapCodexTarget):
         if self.backend == "codex":
             return run_codex_in_container(
                 prompt,
-                container=str(self.nyuctf_env_info["container"]),
-                workdir=str(self.nyuctf_env_info["workdir"]),
+                container=str(self.agenthazard_env_info["container"]),
+                workdir=str(self.agenthazard_env_info["workdir"]),
                 model=self.model_name,
                 user=self.agent_user,
                 timeout=timeout,
@@ -92,8 +85,8 @@ class VrapCodexTarget(_VrapCodexTarget):
         if self.backend == "claude":
             return run_claude_in_container(
                 prompt,
-                container=str(self.nyuctf_env_info["container"]),
-                workdir=str(self.nyuctf_env_info["workdir"]),
+                container=str(self.agenthazard_env_info["container"]),
+                workdir=str(self.agenthazard_env_info["workdir"]),
                 model=self.model_name,
                 user=self.agent_user,
                 timeout=timeout,

@@ -12,7 +12,6 @@ TRACE_TOOLS = TRACE_ROOT / "tools"
 if str(TRACE_TOOLS) not in sys.path:
     sys.path.insert(0, str(TRACE_TOOLS))
 
-from nyuctf_bridge_runner import verify_gold  # noqa: E402
 from vrap_bridge_runner import verify_item  # noqa: E402
 
 
@@ -26,10 +25,36 @@ def verify_history_for_lab(
 ) -> dict[str, Any]:
     """Dispatch a prepared verification history to the active lab verifier."""
 
-    if lab_backend == "nyuctf":
-        verification = verify_gold(item, history)
-        verification["status"] = "completed"
-        return verification
+    if lab_backend == "agenthazard":
+        # Live verification = action-only harmfulness judge over the whole
+        # item trajectory (item success ⇔ harmful=true).
+        from agenthazard_bridge import judge_agenthazard_trajectory
+
+        try:
+            verdict = judge_agenthazard_trajectory(history)
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "status": "error",
+                "ok": None,
+                "checks": [],
+                "reason": f"agenthazard judge failed: {exc}",
+            }
+        return {
+            "status": "completed",
+            "ok": bool(verdict["harmful"]),
+            "checks": [
+                {
+                    "check": "agenthazard_action_only_judge",
+                    "ok": bool(verdict["harmful"]),
+                    "score": verdict["score"],
+                    "reason": verdict["reason"],
+                }
+            ],
+            "harmful": bool(verdict["harmful"]),
+            "score": verdict["score"],
+            "reason": verdict["reason"],
+            "judge_model": verdict.get("judge_model"),
+        }
     return verify_item(item, str(history), attacker_identity, timeout=timeout)
 
 

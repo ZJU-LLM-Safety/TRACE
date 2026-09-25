@@ -29,11 +29,11 @@ TRACE_TOOLS = TRACE_ROOT / "tools"
 if str(TRACE_TOOLS) not in sys.path:
     sys.path.insert(0, str(TRACE_TOOLS))
 
-from nyuctf_bridge_runner import (  # noqa: E402
-    cleanup_environment as cleanup_nyuctf_environment,
-    run_claude_in_container,
+from agenthazard_bridge import (  # noqa: E402
+    cleanup_agenthazard_environment,
+    run_agenthazard_probes,
     run_codex_in_container,
-    setup_environment as setup_nyuctf_environment,
+    setup_agenthazard_environment,
 )
 
 
@@ -45,12 +45,9 @@ class ContinuousItemExecution:
         self.args = args
         self.attacker_identity = str(item.get("attacker_identity") or "root")
         self.agent_user = args.agent_user or self.attacker_identity
-        if getattr(args, "lab_backend", "vrap") == "nyuctf":
-            self.attacker_identity = "root"
-            self.agent_user = args.agent_user or "root"
         self.backend = getattr(args, "target_backend", "codex")
         self.temp_compose = None
-        self.nyuctf_env_info: dict[str, Any] | None = None
+        self.agenthazard_env_info: dict[str, Any] | None = None
         self.session_id: str | None = None
         self.returncodes: list[int | None] = []
         self.result_row: dict[str, Any] = {
@@ -67,19 +64,19 @@ class ContinuousItemExecution:
         }
 
     def __enter__(self) -> "ContinuousItemExecution":
-        if getattr(self.args, "lab_backend", "vrap") == "nyuctf":
-            self.nyuctf_env_info = setup_nyuctf_environment(
+        if getattr(self.args, "lab_backend", "vrap") == "agenthazard":
+            self.agenthazard_env_info = setup_agenthazard_environment(
                 self.item,
-                nyuctf_root=Path(getattr(self.args, "nyuctf_root")),
-                image_name=str(getattr(self.args, "image_name")),
-                cpus=float(getattr(self.args, "cpus", 2.0)),
-                memory=str(getattr(self.args, "memory", "4g")),
-                container_name=getattr(self.args, "container_name", None),
+                compose_file=getattr(self.args, "compose_file", None),
             )
-            self.nyuctf_env_info["image_name"] = str(getattr(self.args, "image_name"))
-            self.result_row["container"] = self.nyuctf_env_info.get("container")
-            self.result_row["workdir"] = self.nyuctf_env_info.get("workdir")
-            self.result_row["mode"] = f"same_{self.backend}_session_same_nyuctf_container"
+            self.result_row["container"] = self.agenthazard_env_info.get("container")
+            self.result_row["workdir"] = self.agenthazard_env_info.get("workdir")
+            self.result_row["mode"] = f"same_{self.backend}_session_same_agenthazard_container"
+            self.result_row["agenthazard"] = {
+                "decoy_setup_commands": self.agenthazard_env_info.get(
+                    "decoy_setup_commands"
+                ),
+            }
             return self
 
         self.temp_compose = prepare_compose(self.args.compose_file, self.attacker_identity)
@@ -87,8 +84,8 @@ class ContinuousItemExecution:
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        if self.nyuctf_env_info is not None and not getattr(self.args, "keep_container", False):
-            cleanup_nyuctf_environment(self.nyuctf_env_info)
+        if self.agenthazard_env_info is not None and not getattr(self.args, "keep_container", False):
+            cleanup_agenthazard_environment(self.agenthazard_env_info)
             return
         if self.temp_compose is not None and not getattr(self.args, "keep_container", False):
             cleanup_environment(self.temp_compose)
@@ -145,13 +142,32 @@ class ContinuousItemExecution:
             "rule",
         )
         session_before = self.session_id
+        probe_cmds = (
+            self.item.get("probe")
+            if self.agenthazard_env_info is not None
+            else None
+        )
+        before_probes = (
+            run_agenthazard_probes(
+                probe_cmds, container=self.agenthazard_env_info["container"]
+            )
+            if probe_cmds
+            else None
+        )
         result = run_strategy_execution_prompt(
             prompt,
             args=self.args,
             backend=self.backend,
             agent_user=self.agent_user,
             resume_session_id=self.session_id,
-            nyuctf_env_info=self.nyuctf_env_info,
+            container_env_info=self.agenthazard_env_info,
+        )
+        after_probes = (
+            run_agenthazard_probes(
+                probe_cmds, container=self.agenthazard_env_info["container"]
+            )
+            if probe_cmds
+            else None
         )
         self.session_id = result.get("thread_id") or self.session_id
         actions = result.get("actions") or []
@@ -173,6 +189,11 @@ class ContinuousItemExecution:
             "source_kind": source_kind,
             "output": result.get("text") or "",
             "actions": actions,
+            **(
+                {"before_probes": before_probes, "after_probes": after_probes}
+                if before_probes is not None
+                else {}
+            ),
             "turn": {
                 "returncode": result.get("returncode"),
                 "error": redact_secrets(str(result.get("error") or "")) or None,
@@ -320,7 +341,7 @@ def run_strategy_execution_prompt(
     backend: str,
     agent_user: str,
     resume_session_id: str | None,
-    nyuctf_env_info: dict[str, Any] | None = None,
+    container_env_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     timeout = int(
         getattr(args, "strategy_execution_timeout", None)
@@ -328,23 +349,6 @@ def run_strategy_execution_prompt(
         or getattr(args, "codex_timeout", 600)
     )
     if backend == "claude":
-        if nyuctf_env_info is not None:
-            return run_claude_in_container(
-                prompt,
-                container=str(nyuctf_env_info["container"]),
-                workdir=str(nyuctf_env_info["workdir"]),
-                model=getattr(args, "claude_model", None),
-                user=agent_user,
-                timeout=timeout,
-                bypass=bool(getattr(args, "bypass", False)),
-                max_turns=getattr(args, "claude_max_turns", None),
-                anthropic_base_url=getattr(args, "anthropic_base_url", None),
-                anthropic_env_key=getattr(args, "anthropic_env_key", "ANTHROPIC_API_KEY"),
-                allowed_tools=_parse_csv_arg(getattr(args, "allowed_tools", None)),
-                resume_session_id=resume_session_id,
-                fork_session=bool(getattr(args, "fork_session", False)),
-                claude_runner=getattr(args, "claude_runner", "sdk"),
-            )
         return run_claude_in_vrap(
             prompt,
             model=getattr(args, "claude_model", None),
@@ -359,11 +363,11 @@ def run_strategy_execution_prompt(
             resume_session_id=resume_session_id,
             claude_runner=getattr(args, "claude_runner", "sdk"),
         )
-    if nyuctf_env_info is not None:
+    if container_env_info is not None:
         return run_codex_in_container(
             prompt,
-            container=str(nyuctf_env_info["container"]),
-            workdir=str(nyuctf_env_info["workdir"]),
+            container=str(container_env_info["container"]),
+            workdir=str(container_env_info["workdir"]),
             model=getattr(args, "codex_model", None),
             user=agent_user,
             timeout=timeout,
@@ -398,9 +402,6 @@ def execute_strategy_output_and_verify(
 
     attacker_identity = str(item.get("attacker_identity") or "root")
     agent_user = args.agent_user or attacker_identity
-    if getattr(args, "lab_backend", "vrap") == "nyuctf":
-        attacker_identity = "root"
-        agent_user = args.agent_user or "root"
     try:
         prompt, generated_parts, source_kind = build_strategy_execution_prompt(
             item=item,
@@ -421,28 +422,15 @@ def execute_strategy_output_and_verify(
     backend = getattr(args, "target_backend", "codex")
     session_id = None
     temp_compose = None
-    nyuctf_env_info = None
     try:
-        if getattr(args, "lab_backend", "vrap") == "nyuctf":
-            nyuctf_env_info = setup_nyuctf_environment(
-                item,
-                nyuctf_root=Path(getattr(args, "nyuctf_root")),
-                image_name=str(getattr(args, "image_name")),
-                cpus=float(getattr(args, "cpus", 2.0)),
-                memory=str(getattr(args, "memory", "4g")),
-                container_name=getattr(args, "container_name", None),
-            )
-            nyuctf_env_info["image_name"] = str(getattr(args, "image_name"))
-        else:
-            temp_compose = prepare_compose(args.compose_file, attacker_identity)
-            setup_environment(item, temp_compose, attacker_identity)
+        temp_compose = prepare_compose(args.compose_file, attacker_identity)
+        setup_environment(item, temp_compose, attacker_identity)
         result = run_strategy_execution_prompt(
             prompt,
             args=args,
             backend=backend,
             agent_user=agent_user,
             resume_session_id=None,
-            nyuctf_env_info=nyuctf_env_info,
         )
         session_id = result.get("thread_id")
         actions = result.get("actions") or []
@@ -484,12 +472,7 @@ def execute_strategy_output_and_verify(
             timeout=int(getattr(args, "verify_timeout", 180)),
         )
     finally:
-        if (
-            nyuctf_env_info is not None
-            and not getattr(args, "keep_container", False)
-        ):
-            cleanup_nyuctf_environment(nyuctf_env_info)
-        elif temp_compose is not None and not getattr(args, "keep_container", False):
+        if temp_compose is not None and not getattr(args, "keep_container", False):
             cleanup_environment(temp_compose)
             temp_compose.unlink(missing_ok=True)
 

@@ -28,7 +28,7 @@ experiment/strategy_library/id15_seed_test/
 experiment/strategy_library/id15_seed_test2/
 experiment/test_plan_generator_gpt4o.py
 experiment/strategy_library_pipeline.md
-experiment/strategy_library/strategy_library.json
+# experiment/strategy_library/strategy_library.json
 
 project_flow_documentation.md
 method_paper.md
@@ -38,3 +38,5 @@ run_xteaming/
 experiment/bak_legacy_scripts/
 experiment/agenthazard_adapter.py
 data/
+tools/diagnostics
+tools/proxies

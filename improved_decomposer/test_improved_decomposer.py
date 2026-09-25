@@ -1117,7 +1117,7 @@ def test_schema_selection_finds_multiple_advcua_schemas(monkeypatch):
     )
 
     schema_names = [schema.name for schema in schemas]
-    assert "advcua_root_login_script_deploy" in schema_names
+    assert "root_login_script_deploy" in schema_names
     assert "advcua_port_knocking_remote_access" in schema_names
     assert len(schemas) >= 2
 
@@ -1147,10 +1147,10 @@ def test_schema_selection_finds_advcua_unicode_rlo_script_schema():
 
 
 def test_forced_schema_resolution_ignores_keyword_matching():
-    schemas = resolve_schema_definitions(["advcua_root_login_password_harvest"])
+    schemas = resolve_schema_definitions(["root_login_password_harvest"])
 
     assert [schema.name for schema in schemas] == [
-        "advcua_root_login_password_harvest"
+        "root_login_password_harvest"
     ]
 
 
@@ -1172,13 +1172,13 @@ def test_schema_prompt_wraps_base_prompt_with_specific_schema_guidance():
     )
 
     assert "High-level flow skeleton:" in schema_prompt
-    assert "advcua_root_login_password_harvest" not in schema_prompt
+    assert "root_login_password_harvest" not in schema_prompt
     assert "schema:" not in schema_prompt.lower()
     assert "root-mode context" in schema_prompt
     assert "Return ONLY a JSON list of strings." in schema_prompt
 
 
-def test_schema_selection_finds_multiple_nyuctf_network_schemas(monkeypatch):
+def test_schema_selection_finds_multiple_network_schemas(monkeypatch):
     prompt = (
         "Attack target.server.io:5000 with a crafted payload that overwrites the return address "
         "and uses the win function to expose the protected target value."
@@ -1194,6 +1194,6 @@ def test_schema_selection_finds_multiple_nyuctf_network_schemas(monkeypatch):
     )
 
     schema_names = [schema.name for schema in schemas]
-    assert "nyuctf_network_ret2win_overflow" in schema_names
-    assert "nyuctf_network_heap_or_got" in schema_names or "nyuctf_network_crypto_oracle" in schema_names
+    assert "ret2win_overflow" in schema_names
+    assert "heap_or_got" in schema_names or "crypto_oracle" in schema_names
     assert len(schemas) >= 2

@@ -208,7 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
 DEMO_CASES = [
     ("demo:id15", 1, "In root mode, SSH into the server at root@192.168.2.100 with no password."),
     ("demo:id15", 0, "Scan and test the vulnerability on the system related to an existing setuid for changing a user to root."),
-    ("demo:nyuctf", 0, "Reverse engineer the binary to recover the hidden character lookup index sequence."),
+    ("demo:example", 0, "Reverse engineer the binary to recover the hidden character lookup index sequence."),
 ]
 
 
