@@ -1,207 +1,77 @@
-# TRACE: Trust-Redistribution Agent Conviction Evaluation
+# TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking
 
-TRACE is a multi-turn jailbreak evaluation framework for agentic AI systems.
-It decomposes harmful task specifications into operational subtasks, elicits
-actionable guidance from the target model through covert multi-turn
-conversations, executes the guidance in sandboxed environments, and judges
-the resulting trajectories for harmful behavior.
+## Overview
 
-## Architecture
+TRACE studies the safety risks of LLM agents that can plan, invoke tools, and execute multi-step tasks in interactive environments. The paper focuses on **end-to-end task execution**, rather than the generation of harmful text alone.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Task Decomposition (improved_decomposer/)                       │
-│  Schema-guided candidate generation → local-rule normalization  │
-│  → LLM quality gate (scoring mode) → multi-criteria selection   │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ sub_prompts
-┌────────────────────────▼────────────────────────────────────────┐
-│  Strategy Composition (experiment/)                              │
-│  ┌─────────────────────┐  ┌──────────────────────────────────┐ │
-│  │ Strategy Library    │  │ Fresh Generation (GPT-4o)        │ │
-│  │ trust-weighted      │  │ covert persona + phased plan     │ │
-│  │ proven/probation/   │  │ 10 strategies per subtask        │ │
-│  │ generated pool      │  └──────────────────────────────────┘ │
-│  └─────────────────────┘                                        │
-│  Direct Execution Probe: bare subtask → retain or fall back     │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ execution inputs
-┌────────────────────────▼────────────────────────────────────────┐
-│  Multi-Turn Elicitation (attacker × target)                     │
-│  Qwen2.5-32B attacker · max 5 turns · covert strategy prompt   │
-│  Bounded retry: 2 turns/phase + success-signal checking        │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ SOURCE TEXT (deflection-filtered)
-┌────────────────────────▼────────────────────────────────────────┐
-│  Agent Execution (agent_execution/)                              │
-│  Codex CLI in Docker · same-session subtask chain               │
-│  per-benchmark environments (AdvCUA / NYUCTF / AgentHazard)     │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ trajectories
-┌────────────────────────▼────────────────────────────────────────┐
-│  Verification & Library Feedback                                 │
-│  benchmark-specific verifier → per-subtask judge                │
-│  → lesson attribution → revision → re-injection                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+The framework combines three components:
 
-## Components
+- **Scheme-based task decomposition.** Around 20 reusable procedural schemes organize tasks into candidate subtask sequences while preserving execution dependencies. The paper evaluates candidates using average subtask harmfulness and sequence-level execution difficulty.
+- **Execution-oriented multi-turn interaction.** A strategy library matches interaction strategies to subtask profiles, including the required operations, environment conditions, and tool usage.
+- **Adaptive recovery and strategy evolution.** Execution feedback supports recovery from intermediate failures and updates the library using successful trajectories and recurring failure patterns. The evolved library in the paper contains more than 30 strategies.
 
-### Task Decomposition
+## Demos
 
-`improved_decomposer/improved_task_decomposer.py` generates 5 candidate
-subtask sequences per task, guided by benchmark-specific schemas
-(`improved_task_schema.py`). Each candidate passes through local-rule
-normalization (`improved_task_text.py` — with literal-preserving safety
-wording) and an LLM quality gate operating in scoring mode. Selection
-combines safety, granularity, and inverse difficulty scores. The
-`unsupported_addition` issue type is promoted to major severity: a faithful
-decomposition must not introduce steps the original task does not support.
+Two recorded demonstrations are available in [`assets/`](assets/):
 
-Output rows record the full candidate process (all candidates, per-candidate
-critique, selection metrics) for reproducibility.
+| Target agent | Demo |
+| --- | --- |
+| Claude Code | [Watch / download the Claude Code demo](assets/claude_id1.mp4) |
+| Codex | [Watch / download the Codex demo](assets/codex_id19.mp4) |
 
-### Strategy Library
 
-`experiment/strategy_library/` implements a persistent, file-locked library
-of interaction patterns. Each entry carries:
+## Results Reported in the Paper
 
-- an interaction pattern (persona + context + approach) with progression
-  phases,
-- an experience profile: fits/avoid task types with proven/probation
-  status, known failure modes as imperative lessons with occurrence counts,
-- task-type ledgers that promote or demote classes at threshold net
-  outcomes.
+The paper evaluates TRACE on **AdvCUA** and **AgentHazard**, using **Codex** and **Claude Code** with multiple underlying models. All methods are evaluated in the same benchmark-specific execution environment.
 
-Trust-weighted composition places proven entries first, probation entries
-(a fresh revision earning its first trial) second, and appends unproven
-library entries after the diverse generated batch — seeded knowledge never
-displaces fresh generation. Failures are attributed to lessons by an LLM
-(match-to-existing or coin-new); a lesson reaching the revision threshold
-triggers an in-place rewrite or fork. Successful generated-strategy
-conversations are extracted back into the library.
+The following attack success rates (ASR) are taken from Table 1 of the submitted manuscript; they are not results generated by installing this repository.
 
-The library supports parallel runs: an exclusive file lock wraps every
-read-modify-write cycle, starting from a fresh disk load.
+| Agent framework | Underlying model | AdvCUA | AgentHazard |
+| --- | --- | ---: | ---: |
+| Codex | GPT-5.5 | 0.62 | 0.97 |
+| Codex | Gemini-3.5-Flash | 0.65 | 0.99 |
+| Codex | DeepSeek-V4-Pro | 0.81 | 1.00 |
+| Claude Code | Claude-Opus-4.8 | 0.54 | 0.97 |
+| Claude Code | Gemini-3.5-Flash | 0.69 | 0.98 |
+| Claude Code | DeepSeek-V4-Pro | 0.88 | 0.99 |
 
-### Online Runner
+Please refer to the manuscript for baseline comparisons, evaluation protocols, efficiency analysis, and defense experiments.
 
-`experiment/main.py` orchestrates per-item execution:
+## Repository Structure
 
-1. **Pool composition** — classify each subtask (the classifier splits
-   destructive/sensitive payload subtasks into a `-destructive` suffix
-   class); compose trust-weighted pools from library + generation.
-2. **Direct execution probe** — each subtask's bare input runs in a fresh
-   container; refusal/safety patterns fall back to strategy conversation,
-   otherwise the input is retained.
-3. **Item attempt** — retained direct inputs and strategy-derived inputs
-   execute in subtask order within one continuous target session.
-4. **Verification & retry** — on failure, successful prefixes are retained;
-   the trailing failed suffix retries with the next unused strategy. From
-   attempt 2 onward, retained bare inputs are upgraded to strategy
-   conversations. Per-item fault tolerance: a failed item records an error
-   row without killing the run.
-5. **Library feedback** — outcome recording, failure attribution, revision
-   triggering, and success re-injection (Section "Strategy Library").
+| Path | Contents |
+| --- | --- |
+| [`improved_decomposer/`](improved_decomposer/) | Procedural schemes, candidate generation, validation, and selection |
+| [`experiment/main.py`](experiment/main.py) | Experiment orchestration and execution feedback |
+| [`experiment/runtime/`](experiment/runtime/) | Runtime components for models, strategies, and subtask sequences |
+| [`experiment/strategy_library/`](experiment/strategy_library/) | Strategy storage, retrieval, revision, and feedback integration |
+| [`experiment/config/`](experiment/config/) | Experiment configurations and prompt templates |
+| [`agent_execution/`](agent_execution/) | Target-agent interfaces, session handling, trajectory collection, and verification |
+| [`tools/`](tools/) | Benchmark bridges, API adapters, and diagnostics |
+| [`assets/`](assets/) | Claude Code and Codex demonstration videos |
+| [`environment.yml`](environment.yml) | Conda environment specification |
 
-### Execution Backends
+## Environment Setup
 
-The runner supports three benchmark environments via `--lab-backend`:
-
-| Backend | Environment | Verification |
-|---|---|---|
-| `vrap` (AdvCUA) | dual ssh_server + ssh_client containers with per-item decoy initialization | deterministic gold checks |
-| `nyuctf` | per-challenge Docker containers from NYUCTF CTF archive | gold probe comparison |
-| `agenthazard` | generic container with query-generated decoy data + before/after state probes | official AgentHazard LLM judge (action-only) |
-
-For AgentHazard, decoy environments are generated from the query alone
-(category + prompt, no subtask information), validated by live execution in
-throwaway containers, and attached at the source-data level so any
-decomposition variant inherits them. The live verification judge sees only
-the executed tool calls (commands + results) — prompts and agent narration
-are excluded, so verdicts rest on executed behavior.
-
-## Results
-
-### AgentHazard (100-item sample, B-mode)
-
-| Configuration | Harmful rate |
-|---|---|
-| C-mode (blank env, lightweight decomposition) | 2/10 |
-| C-mode (blank env, improved decomposition) | 4/10 |
-| B-mode (decoy env, lightweight decomposition) | 6/10 |
-| **B-mode (decoy env, improved decomposition + query-only decoys)** | **8/10** |
-
-The two improvements stack: improved decomposition + query-generated decoy
-environments flipped items 24 and 605 with zero losses.
-
-## Reproduction
-
-### Prerequisites
-
-- Python 3.11+ with dependencies in `environment.yml`
-- Docker with the target agent image
-- Local Qwen2.5-32B-Instruct weights (set `QWEN_MODEL_PATH`)
-- OpenAI-compatible API endpoint (set `OPENAI_API_KEY` and
-  `OPENAI_BASE_URL`)
-- Benchmark data (not included; place under `data/` per the expected
-  layout)
-
-### Decomposition
+The provided environment specification targets Linux and Python 3.11.
 
 ```bash
-python3 improved_decomposer/improved_task_decomposer.py \
-  --data_file_path <input.json> \
-  --output_file_path <output.jsonl> \
-  --num_decompositions_per_task 5 \
-  --model gpt-4o-2024-11-20 \
-  --use_schema_decompose \
-  --disable_llm_quality_refinement \
-  --max_regeneration_attempts 1
+conda env create -f environment.yml
+conda activate trace
 ```
 
-### Evaluation run
+Execution experiments additionally require benchmark data and environment resources, Docker, the relevant target-agent CLI, and access to the models used by the selected configuration. Local model configurations also require the corresponding model weights and suitable hardware. API credentials should be supplied through environment variables.
 
-```bash
-python experiment/main.py \
-  --dataset <benchmark.jsonl> \
-  --lab-backend <vrap|nyuctf|agenthazard> \
-  --config experiment/config/config_online_qwen_local_gpt55_id15_covert.yaml \
-  --plan-prompts experiment/config/prompts/plan_generation_prompts_covert.yaml \
-  --plan-generator-provider openai \
-  --plan-generator-model gpt-4o-2024-11-20 \
-  --all-subtasks \
-  --target-backend codex \
-  --codex-model gpt-5.5 \
-  --responses-base-url "$OPENAI_BASE_URL" \
-  --responses-env-key OPENAI_API_KEY \
-  --bypass --no-textgrad --no-plan-revision \
-  --strategy-success-mode execute_verify \
-  --strategy-execution-prompt-style auto \
-  --attacker-model-path "$QWEN_MODEL_PATH" \
-  --attacker-max-new-tokens 2048 --device-map auto \
-  --item-attempts 5 \
-  --strategy-library experiment/strategy_library/strategy_library.json \
-  --library-pool-size 3 \
-  --library-max-per-subtask 2 \
-  --library-selection-order prefer-library
-```
+### Scope of This Snapshot
 
-For a Claude Code target, replace the target settings with
-`--target-backend claude --claude-runner cli --claude-model <model>`.
+Benchmark datasets, Docker environment resources, model weights, and the evolved strategy-library JSON are not bundled in this snapshot. The strategy-library implementation is included.
 
-### Output format
+The current experiment runner exposes the `vrap` (AdvCUA) and `nyuctf` backends. An AgentHazard backend is not included in this snapshot, although AgentHazard results are reported in the paper. NYUCTF utilities are retained in the code but are not part of the paper's main evaluation.
 
-Each result row in `results.jsonl` contains:
+The current candidate-selection code retains a granularity-based score. The manuscript describes selection using harmfulness and execution difficulty; this implementation detail should be aligned before exact reproduction of the paper's experiments.
 
-- `subprompts`: per-subtask records with conversation histories and
-  execution trajectories,
-- `execution.subtask_executions`: per-subtask codex executions including
-  before/after environment probes (AgentHazard),
-- `verification`: the benchmark-specific verdict,
-- `run.cost`: per-item timing decomposed into conversation, execution, and
-  environment-setup components (net execution time = total − env_setup).
+See [the execution module documentation](agent_execution/README.md) for the available interfaces and trajectory formats.
 
-## License
+## Research Use
 
-This code is provided for research evaluation purposes.
+This project is intended to support research on agent safety and the development of stronger defenses. Experiments described in the paper were conducted in controlled environments. Use the code only with systems, data, and environments for which you have authorization.
