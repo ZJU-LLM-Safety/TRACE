@@ -63,12 +63,7 @@ Useful flags:
   failed candidate.
 - `--disable_local_rules`: inspect the raw LLM decomposition without local
   normalization.
-- `--selection_safety_weight 0.4`: default safety share of the final score;
-  safety stays the dominant dimension.
-- `--selection_difficulty_weight 0.3`: default execution-difficulty share;
-  lower judge-scored difficulty contributes more via
-  `executability = 1 - difficulty/5`. Granularity implicitly receives
-  `1 - 0.4 - 0.3 = 0.3`.
+- `--selection_safety_weight 0.5`: default balance between safety and granularity.
 
 Each output row now includes:
 

@@ -48,8 +48,7 @@ def decompose_task(
     use_llm_quality_refinement: bool = True,
     quality_refinement_rounds: int = 1,
     max_regeneration_attempts: int = 3,
-    selection_safety_weight: float = 0.4,
-    selection_difficulty_weight: float = 0.3,
+    selection_safety_weight: float = 0.5,
     use_schema_decompose: bool = False,
     use_local_rules: bool = True,
     schema_names: list[str] | None = None,
@@ -68,7 +67,6 @@ def decompose_task(
             quality_refinement_rounds=quality_refinement_rounds,
             max_regeneration_attempts=max_regeneration_attempts,
             selection_safety_weight=selection_safety_weight,
-            selection_difficulty_weight=selection_difficulty_weight,
             use_local_rules=use_local_rules,
             schema_names=schema_names,
             return_trace=return_trace,
@@ -84,7 +82,6 @@ def decompose_task(
         "valid_candidates": [],
         "decomposition_token_cost": 0,
         "selection_safety_weight": selection_safety_weight,
-        "selection_difficulty_weight": selection_difficulty_weight,
         "quality_refinement_enabled": bool(use_llm_quality_refinement and quality_refinement_rounds > 0),
         "quality_refinement_rounds": quality_refinement_rounds,
         "require_llm_equivalence": require_llm_equivalence,
@@ -253,7 +250,6 @@ def decompose_task(
         openai_base_url=openai_base_url,
         client=client,
         selection_safety_weight=selection_safety_weight,
-        selection_difficulty_weight=selection_difficulty_weight,
         usage_sink=generation_trace,
     )
     generation_trace["valid_candidates"] = scored_valid_candidates
@@ -262,14 +258,7 @@ def decompose_task(
             (candidate, candidate["selection_metrics"])
             for candidate in scored_valid_candidates
         ),
-        key=lambda item: (
-            item[1]["final_score"],
-            item[1]["granularity_score"],
-            item[1]["executability_score"],
-            item[1]["safety_score"],
-            item[1]["boundary_score"],
-            -item[1]["subtask_count"],
-        ),
+        key=lambda item: item[1]["final_score"],
     )
     best_candidate = dict(best_candidate)
     best_candidate["selection_metrics"] = best_metrics
@@ -338,14 +327,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--selection_safety_weight",
         type=float,
-        default=0.4,
-        help="Weight of safety in final valid-candidate selection; granularity gets 1 minus this weight and the difficulty weight.",
-    )
-    parser.add_argument(
-        "--selection_difficulty_weight",
-        type=float,
-        default=0.3,
-        help="Weight of execution difficulty in final candidate selection; lower difficulty contributes more via executability = 1 - difficulty/5. Granularity gets 1 minus the safety and difficulty weights.",
+        default=0.5,
+        help="Weight of safety in final valid-candidate selection; granularity gets 1 minus this weight.",
     )
     parser.add_argument(
         "--use_schema_decompose",
@@ -407,7 +390,6 @@ if __name__ == "__main__":
             quality_refinement_rounds=args.quality_refinement_rounds,
             max_regeneration_attempts=args.max_regeneration_attempts,
             selection_safety_weight=args.selection_safety_weight,
-            selection_difficulty_weight=args.selection_difficulty_weight,
             use_schema_decompose=args.use_schema_decompose,
             use_local_rules=not args.disable_local_rules,
             schema_names=args.schema_names,
