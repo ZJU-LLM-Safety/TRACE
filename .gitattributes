@@ -1,5 +1,4 @@
-**/*.tif !text !filter !merge !diff
-**/*.tar.gz.* !text !filter !merge !diff
+asssets/*.mp4 filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.mp4 !text -filter -merge -diff
 * !text !filter !merge !diff
