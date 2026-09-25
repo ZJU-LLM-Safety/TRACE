@@ -1,7 +1,5 @@
-data/nyuctf/.nyuctf/**/*.tif filter=lfs diff=lfs merge=lfs -text
-data/nyuctf/.nyuctf/**/*.tar.gz.* filter=lfs diff=lfs merge=lfs -text
-**/*.tar.gz.* !text !filter !merge !diff
 **/*.tif !text !filter !merge !diff
+**/*.tar.gz.* !text !filter !merge !diff
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.mp4 !text -filter -merge -diff
 * !text !filter !merge !diff
