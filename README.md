@@ -1,9 +1,5 @@
 # TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking
 
-Official research implementation accompanying **TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking**.
-
-**Anonymous submission under review at ICLR 2027.**
-
 ## Overview
 
 TRACE studies the safety risks of LLM agents that can plan, invoke tools, and execute multi-step tasks in interactive environments. The paper focuses on **end-to-end task execution**, rather than the generation of harmful text alone.
@@ -23,14 +19,6 @@ Two recorded demonstrations are available in [`assets/`](assets/):
 | Claude Code | [Watch / download the Claude Code demo](assets/claude_id1.mp4) |
 | Codex | [Watch / download the Codex demo](assets/codex_id19.mp4) |
 
-The videos are stored with **Git LFS**. After cloning the repository, retrieve the video files with:
-
-```bash
-git lfs install
-git lfs pull --include="assets/*.mp4"
-```
-
-If a repository viewer does not play the videos inline, download the original files and open them locally. A source archive containing only LFS pointer files does not contain the playable videos.
 
 ## Results Reported in the Paper
 
