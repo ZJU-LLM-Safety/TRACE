@@ -62,16 +62,6 @@ conda activate trace
 
 Execution experiments additionally require benchmark data and environment resources, Docker, the relevant target-agent CLI, and access to the models used by the selected configuration. Local model configurations also require the corresponding model weights and suitable hardware. API credentials should be supplied through environment variables.
 
-### Scope of This Snapshot
-
-Benchmark datasets, Docker environment resources, model weights, and the evolved strategy-library JSON are not bundled in this snapshot. The strategy-library implementation is included.
-
-The current experiment runner exposes the `vrap` (AdvCUA) and `nyuctf` backends. An AgentHazard backend is not included in this snapshot, although AgentHazard results are reported in the paper. NYUCTF utilities are retained in the code but are not part of the paper's main evaluation.
-
-The current candidate-selection code retains a granularity-based score. The manuscript describes selection using harmfulness and execution difficulty; this implementation detail should be aligned before exact reproduction of the paper's experiments.
-
-See [the execution module documentation](agent_execution/README.md) for the available interfaces and trajectory formats.
-
 ## Research Use
 
 This project is intended to support research on agent safety and the development of stronger defenses. Experiments described in the paper were conducted in controlled environments. Use the code only with systems, data, and environments for which you have authorization.
