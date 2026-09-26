@@ -40,5 +40,3 @@ conda env create -f environment.yml
 conda activate trace
 ```
 
-Execution experiments additionally require benchmark data and environment resources, Docker, the relevant target-agent CLI, and access to the models used by the selected configuration. Local model configurations also require the corresponding model weights and suitable hardware. API credentials should be supplied through environment variables.
-
