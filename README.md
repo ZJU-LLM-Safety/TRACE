@@ -2,11 +2,11 @@
 
 ## Overview
 
-TRACE consists of three main components. In scheme-guided task decomposition, we develop around 20 procedural schemes to instantiate the harmful task as subtask sequences, preserving harmful intent and reducing execution difficulty. TRACE then evaluates the valid sequences along two dimensions and selects the optimal one.
+- **Scheme-based task decomposition.** To reduce attack difficulty, we develop around 20 procedural decomposition schemes to resolve a complex harmful task into relatively benign and simple subtask sequences. TRACE then jointly assesses the remaining candidates based on subtask harmfulness and execution difficulty, including implementation complexity, workflow length, and state dependencies, to select the optimal sequence as the attack workflow.
 
-Most of the subtasks in the selected sequence are benign-looking and can be executed by the target agent smoothly. For the remaining refused subtasks, TRACE constructs structured subtask profiles and retrieves profile-matched strategies that progressively guide the agent to complete these subtasks via multi-turn interactions.
+- **Execution-oriented multi-turn interaction.** For the subtasks that trigger execution refusals, TRACE constructs subtask profiles and retrieves appropriate execution-oriented multi-turn interaction strategies from a continuously evolving strategy library. TRACE leverages the selected strategy to instantiate the subtask and gradually constructs a plausible execution context through multi-turn interactions, inducing the target agent to complete the subtask.
 
-Furthermore, TRACE leverages execution feedback to continuously evolve the execution-oriented strategy library: successful trajectories provide reusable strategies, and failure patterns guide revisions and evidence accumulation to optimize future strategy application.
+- **Adaptive recovery and strategy evolution.** When an intermediate step fails, TRACE localizes the failed subtask, preserves prior progress, adapts the corresponding strategy, and resumes from the failed subtask without starting over. Furthermore, TRACE leverages execution feedback to continuously evolve the execution-oriented strategy library, which contains more than 30 strategies after evolution.
 
 ## Demos
 
