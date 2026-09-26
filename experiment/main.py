@@ -1894,6 +1894,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def validate_lab_mode(args: argparse.Namespace) -> None:
+    if args.lab_backend == "agenthazard":
+        # Default the compose to the generic agenthazard container unless the
+        # caller explicitly pointed at a compose file.
+        if args.compose_file == DEFAULT_COMPOSE:
+            args.compose_file = (
+                EXPERIMENT_ROOT.parent / "data" / "agenthazard" / "docker-compose.yml"
+            )
+
+
 def make_output_path(output_dir: Path | None) -> Path:
     if output_dir is None:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
