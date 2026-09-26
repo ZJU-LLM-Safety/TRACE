@@ -446,7 +446,7 @@ def main():
         {
             "provider": "google",
             "model": "gemini-1.5-pro-002",
-            "project_id": "mars-lab-429920",
+            "project_id": "your-project-id",
             "location": "us-central1",
             "max_retries": 3,
             "temperature": 0,
@@ -455,7 +455,7 @@ def main():
         {
             "provider": "google",
             "model": "meta/llama-3.1-405b-instruct-maas",
-            "project_id": "mars-lab-429920",
+            "project_id": "your-project-id",
             "location": "us-central1",
             "max_retries": 3,
             "temperature": 0,

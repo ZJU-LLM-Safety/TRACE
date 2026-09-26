@@ -48,7 +48,7 @@ def get_openai_client(openai_api_key=None, openai_base_url=None):
         openai_base_url,
         "OPENAI_BASE_URL",
         "openai_base_url",
-        default="https://api.openai.com/v1",
+        default=os.environ.get("OPENAI_BASE_URL", ""),
     )
     if OpenAI is None:
         return MinimalOpenAIClient(api_key=api_key, base_url=base_url)

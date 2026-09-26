@@ -48,7 +48,7 @@ class GPTJudge:
         return judge_prompt
 
     def generate_gpt(self, query):
-        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        base_url = os.environ.get("OPENAI_BASE_URL", "").rstrip("/")
         api_key = os.environ.get("OPENAI_API_KEY")
         timeout = float(os.environ.get("OPENAI_TIMEOUT", "60"))
         payload = {

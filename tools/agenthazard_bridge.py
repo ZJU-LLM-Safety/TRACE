@@ -176,7 +176,7 @@ def _judge_chat(payload: dict[str, Any], *, timeout: float = 120.0) -> str:
     import requests
 
     base_url = (
-        os.environ.get("OPENAI_BASE_URL", "https://az.gptplus5.com/v1")
+        os.environ.get("OPENAI_BASE_URL", "")
     ).rstrip("/")
     api_key = os.environ.get("OPENAI_API_KEY", "")
     session = requests.Session()

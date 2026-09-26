@@ -643,7 +643,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backend", choices=("codex", "claude"), default="codex")
     parser.add_argument("--model", default="gpt-5.5")
     parser.add_argument("--claude-model", default=DEFAULT_CLAUDE_MODEL)
-    parser.add_argument("--responses-base-url", default="{OPENAI_BASE_URL_ENV}")
+    parser.add_argument("--responses-base-url", default=os.environ.get("OPENAI_BASE_URL", ""))
     parser.add_argument("--responses-env-key", default="OPENAI_API_KEY")
     parser.add_argument("--anthropic-base-url", default=DEFAULT_ANTHROPIC_BASE_URL)
     parser.add_argument("--anthropic-env-key", default="ANTHROPIC_API_KEY")

@@ -199,7 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--library", type=Path, default=STRATEGY_LIBRARY_ROOT / "strategy_library.json")
     parser.add_argument("--model", default="gpt-4o-2024-11-20")
-    parser.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "{OPENAI_BASE_URL_ENV}"))
+    parser.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", ""))
     parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
     parser.add_argument("--timeout", type=float, default=120.0)
     return parser

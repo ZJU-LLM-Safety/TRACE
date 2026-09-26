@@ -701,7 +701,7 @@ def _write_codex_responses_config(
     selected_base_url = (
         base_url
         or os.environ.get("CODEX_RESPONSES_BASE_URL")
-        or "https://api.openai.com/v1"
+        or os.environ.get("OPENAI_BASE_URL", "")
     )
     config = f'''model = "{_toml_escape(selected_model)}"
 model_provider = "{_toml_escape(provider_name)}"
