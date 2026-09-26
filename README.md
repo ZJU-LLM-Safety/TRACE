@@ -40,11 +40,11 @@ conda env create -f environment.yml
 conda activate trace
 ```
 
-## Usage
+## Getting Started
 
 Run the following commands from the repository root. Replace placeholder paths, model names, and endpoint settings with your local configuration.
 
-### Task Decomposition
+### 1. Configure API Access
 
 Set the credentials and base URL for an OpenAI-compatible Chat Completions endpoint:
 
@@ -52,6 +52,8 @@ Set the credentials and base URL for an OpenAI-compatible Chat Completions endpo
 export OPENAI_API_KEY="<your-api-key>"
 export OPENAI_BASE_URL="<your-api-base-url>"
 ```
+
+### 2. Task Decomposition
 
 The input must be a JSON array of task records. Each record should have a unique `id` and a task-text field named `prompt_to_os_agent`, `harmful`, or `prompt`. If the source dataset uses `query`, copy it to `prompt` before running the decomposer.
 
@@ -66,7 +68,7 @@ python improved_decomposer/improved_task_decomposer.py \
 
 `--use_schema_decompose` enables scheme-based candidate generation. The JSONL output contains task IDs, selected `sub_prompts`, candidate evaluation records, and decomposition costs. Records with no valid candidate have `status: "no_valid_candidate"` and empty `sub_prompts`. Existing task IDs in the output file are skipped when the command is rerun. Use `--target_ids ID1 ID2` to process selected tasks.
 
-### Main Experiment
+### 3. Run Experiments
 
 Prepare a JSON or JSONL dataset by matching decomposition results to the original benchmark records by ID and adding the selected `sub_prompts`. Preserve the benchmark-specific environment and verification fields; the decomposer output alone does not retain all of these fields. Exclude records with no valid candidate when evaluating decomposed workflows.
 
