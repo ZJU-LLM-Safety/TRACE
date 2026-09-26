@@ -6,7 +6,7 @@
 
 - **Execution-oriented multi-turn interaction.** For the subtasks that trigger execution refusals, TRACE constructs subtask profiles and retrieves appropriate execution-oriented multi-turn interaction strategies from a continuously evolving strategy library. TRACE leverages the selected strategy to instantiate the subtask and gradually constructs a plausible execution context through multi-turn interactions, inducing the target agent to complete the subtask.
 
-- **Adaptive recovery and strategy evolution.** When an intermediate step fails, TRACE localizes the failed subtask, preserves prior progress, adapts the corresponding strategy, and resumes from the failed subtask without starting over. Furthermore, TRACE leverages execution feedback to continuously evolve the execution-oriented strategy library, which contains more than 30 strategies after evolution.
+- **Adaptive recovery and strategy evolution.** When an intermediate step fails, TRACE localizes the failed subtask, preserves prior progress, adapts the corresponding strategy, and resumes from the failed subtask without starting over. Furthermore, TRACE leverages execution feedback to continuously evolve the execution-oriented strategy library.
 
 ## Demos
 
