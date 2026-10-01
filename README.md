@@ -1,60 +1,50 @@
 # TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking
 
-<div align="center">
+Official implementation for **[TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking](https://arxiv.org/abs/2605.30883)**.
 
-**Task-Aware Adaptive Self-Evolving Agentic Jailbreaking for LLM Agents**
+## Overview
 
-[Paper](https://arxiv.org/abs/2605.30883) | [Code](https://github.com/ZJU-LLM-Safety/TRACE)
+**TRACE** is an agentic jailbreaking framework that reduces attack difficulty, maintains execution dependencies, induces agents to execute end-to-end attack workflows, and recovers from intermediate failures without restarting from scratch.
 
-</div>
+TRACE consists of three main stages:
 
-## 🔥 News
+- **Scheme-guided task decomposition.** TRACE develops over 20 procedural decomposition schemes that specify key operations and their execution dependencies for different task types. These schemes instantiate complex harmful tasks into multiple more executable and benign-looking subtask sequences. TRACE evaluates valid candidates based on subtask harmfulness and execution difficulty and selects an appropriate sequence for attack execution.
 
-- **[Sep. 2026]** We released an updated version of TRACE with scheme-based task decomposition, execution-oriented multi-turn interaction, and adaptive recovery.
-- **[May 2026]** TRACE was released on arXiv.
+- **Execution-oriented multi-turn interaction.** For subtasks that trigger execution refusals, TRACE constructs structured subtask profiles and retrieves profile-matched execution-oriented strategies. Each strategy specifies an interaction pattern and progression phases associated with intermediate goals, environment states, required tools, and success signals, progressively guiding the target agent to complete the refused subtask.
 
-## 📖 Overview
+- **Self-evolving strategy library.** TRACE uses execution feedback to continuously evolve its strategy library. It retains strategies from successful trajectories, learns from recurring failure patterns to revise existing strategies or construct new ones, and prioritizes historically effective strategies for similar subtask profiles. When an intermediate step fails, TRACE localizes the failed subtask, preserves prior progress, adapts the corresponding strategy, and resumes execution from the failed state.
 
-Large language model (LLM) agents can autonomously plan, invoke tools, interact with environments, and execute long-horizon workflows. This introduces safety risks beyond conventional text-only jailbreaks: even when harmful instructions can be elicited, aligned agents may still refuse to execute them, while intermediate execution failures can interrupt an otherwise successful attack workflow.
+The evolved strategy library contains more than 30 reusable execution-oriented strategies.
 
-**TRACE** is an agentic jailbreaking framework designed to address these challenges through task decomposition, execution-oriented multi-turn interaction, and adaptive recovery.
+For more details, please refer to our **[paper](https://arxiv.org/abs/2605.30883)**.
 
-TRACE consists of three key components:
+## Main Results
 
-- **Scheme-based Task Decomposition.** TRACE develops around 20 procedural decomposition schemes that specify key operations and their dependencies for different task types. A complex harmful task is instantiated under different schemes to generate multiple candidate subtask sequences, which are evaluated based on harmfulness and execution difficulty.
+We evaluate TRACE on **AdvCUA** and **AgentHazard**, two agent safety benchmarks that require end-to-end execution of multi-step tasks in interactive environments. Experiments cover two agent frameworks, **Codex** and **Claude Code**, with multiple underlying models.
 
-- **Execution-oriented Multi-turn Interaction.** For subtasks that trigger execution refusals, TRACE constructs structured subtask profiles and retrieves corresponding execution-oriented strategies from an evolving strategy library. Each strategy specifies intermediate goals, relevant environment states, and required tool calls, guiding the agent toward completing the subtask through multi-turn interaction.
+| Agent Framework | Underlying Model | AdvCUA | AgentHazard |
+| --- | --- | ---: | ---: |
+| Codex | GPT-5.5 | **0.62** | **0.97** |
+| Codex | Gemini-3.5-Flash | **0.65** | **0.99** |
+| Codex | DeepSeek-V4-Pro | **0.81** | **1.00** |
+| Claude Code | Claude-Opus-4.8 | **0.54** | **0.97** |
+| Claude Code | Gemini-3.5-Flash | **0.69** | **0.98** |
+| Claude Code | DeepSeek-V4-Pro | **0.88** | **0.99** |
 
-- **Adaptive Recovery and Strategy Evolution.** When an intermediate step fails, TRACE localizes the failed subtask, preserves previously completed execution states, adapts the corresponding strategy, and resumes execution without restarting the entire workflow. Execution feedback is further used to continuously evolve the strategy library.
+TRACE consistently achieves strong attack performance across different agent frameworks and underlying models, substantially outperforming prior baselines in most settings. On **AdvCUA**, TRACE achieves ASRs ranging from **0.54 to 0.88**. On **AgentHazard**, TRACE achieves **near-perfect ASRs across all evaluated configurations**, ranging from **0.97 to 1.00**.
 
-## 📊 Main Results
+Please refer to the [paper](https://arxiv.org/abs/2605.30883) for complete baseline comparisons, category-level results, efficiency analysis, ablation studies, and defense experiments.
 
-We evaluate TRACE across different agent frameworks and underlying LLMs on **AdvCUA**, a benchmark containing realistic OS-level attack tasks that require end-to-end execution in interactive environments.
+## Demos
 
-TRACE consistently achieves strong attack performance across different agent configurations and substantially outperforms existing jailbreak baselines.
-
-| Agent Framework | Model | TRACE ASR |
-| :--- | :--- | :---: |
-| Codex | GPT-5.5 | **0.62** |
-| Claude Code | Claude Opus 4.8 | **0.54** |
-| Claude Code | Gemini-3.5-Flash | **0.69** |
-
-For example, on **Codex + GPT-5.5**, TRACE achieves an ASR of **0.62**, compared with **0.27** for the strongest baseline, MD-Attack.
-
-These results demonstrate the importance of preserving execution dependencies during task decomposition and adapting interaction strategies according to intermediate environment states and execution feedback.
-
-For complete results across benchmarks, models, baselines, efficiency analysis, ablations, and defenses, please refer to our [paper](https://arxiv.org/abs/2605.30883).
-
-## 🎬 Demos
-
-We provide two recorded demonstrations of TRACE with **Claude Code** and **Codex**.
+Two recorded demonstrations with **Claude Code** and **Codex** are provided in `assets/`:
 
 | Target Agent | Demo |
-| :--- | :--- |
+| --- | --- |
 | Claude Code | [Claude Code Demo](assets/claude_demo.mp4) |
 | Codex | [Codex Demo](assets/codex_demo.mp4) |
 
-## 🛠️ Installation
+## Installation
 
 The provided environment specification targets Linux and Python 3.11.
 
@@ -66,7 +56,7 @@ conda env create -f environment.yml
 conda activate trace
 ```
 
-## 🚀 Usage
+## Usage
 
 ### 1. Configure API Access
 
@@ -79,7 +69,7 @@ export OPENAI_BASE_URL="<your-api-base-url>"
 
 ### 2. Task Decomposition
 
-Generate candidate subtask sequences using the procedural decomposition schemes:
+Generate candidate subtask sequences using scheme-guided task decomposition:
 
 ```bash
 python improved_decomposer/improved_task_decomposer.py \
@@ -92,9 +82,9 @@ python improved_decomposer/improved_task_decomposer.py \
 
 `--use_schema_decompose` enables scheme-based candidate generation.
 
-### 3. Run TRACE
+### 3. Run Experiments
 
-The following example runs TRACE on **AdvCUA** with **Codex**:
+The following example uses the AdvCUA benchmark with Codex:
 
 ```bash
 python experiment/main.py \
@@ -111,42 +101,40 @@ python experiment/main.py \
   --output outputs/experiment/results.jsonl
 ```
 
-To inspect all available command-line options:
+To inspect the available command-line options:
 
 ```bash
 python improved_decomposer/improved_task_decomposer.py --help
 python experiment/main.py --help
 ```
 
-## 📁 Repository Structure
+## Repository Structure
 
 | Path | Description |
-| :--- | :--- |
-| `improved_decomposer/` | Procedural decomposition schemes, candidate generation, validation, and selection |
-| `experiment/main.py` | Main experiment orchestration and execution-feedback loop |
+| --- | --- |
+| `improved_decomposer/` | Procedural schemes, candidate generation, validation, and selection |
+| [`experiment/main.py`](experiment/main.py) | Experiment orchestration and execution feedback |
 | `experiment/runtime/` | Runtime components for models, strategies, and subtask sequences |
 | `experiment/strategy_library/` | Strategy storage, retrieval, revision, and feedback integration |
 | `experiment/config/` | Experiment configurations and prompt templates |
 | `agent_execution/` | Target-agent interfaces, session handling, trajectory collection, and verification |
 | `tools/` | Benchmark bridges, API adapters, and diagnostics |
-| `assets/` | Demonstration videos |
-| `environment.yml` | Conda environment specification |
+| `assets/` | Claude Code and Codex demonstration videos |
+| [`environment.yml`](environment.yml) | Conda environment specification |
 
-## 📝 Citation
+## Citation
 
-If you find TRACE useful for your research, please cite our paper:
+If you find TRACE useful in your research, please consider citing:
 
 ```bibtex
-@misc{zeng2026trace,
-  title        = {TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking},
-  author       = {Churui Zeng and Weiwei Qi and Kedong Xiu and Tianhang Zheng and Chaochao Lu and Liang He and Zhan Qin and Kui Ren},
-  year         = {2026},
-  eprint       = {2605.30883},
-  archivePrefix= {arXiv},
-  primaryClass = {cs.CR}
+@article{zeng2026trace,
+  title={TRACE: Task-Aware Adaptive Self-Evolving Agentic Jailbreaking},
+  author={Zeng, Churui and Xiu, Kedong and Qi, Weiwei and Hao, Yuqi and Lu, Chaochao and He, Liang and Qin, Zhan and Zheng, Tianhang},
+  journal={arXiv preprint arXiv:2605.30883},
+  year={2026}
 }
 ```
 
-## ⚠️ Disclaimer
+## Disclaimer
 
-This repository is intended solely for **academic research and controlled AI safety evaluation**. Experiments should only be conducted in authorized and isolated environments. Do not use this framework against real-world systems, third-party services, or infrastructure without explicit authorization.
+This work is intended solely to reveal and mitigate the safety risks of LLM agents. All experiments are conducted in controlled environments. The code and resources in this repository should only be used for research and authorized safety evaluation.
